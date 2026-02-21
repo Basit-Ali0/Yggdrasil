@@ -77,8 +77,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                 session: data.session,
                 isLoading: false,
             });
-        } catch {
-            set({ error: 'Failed to sign in. Please try again.', isLoading: false });
+        } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : 'Failed to sign in. Please try again.';
+            console.error('[auth] signIn error:', err);
+            set({ error: message, isLoading: false });
         }
     },
 
