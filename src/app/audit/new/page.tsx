@@ -379,10 +379,10 @@ export default function NewAuditPage() {
                     </div>
 
                     {/* Split Panel Body */}
-                    <div className="flex-1 grid grid-cols-2 gap-4 min-h-0 overflow-hidden py-2">
+                    <div className="flex-1 grid grid-cols-2 gap-4 min-h-0 py-2 overflow-hidden">
                         {/* LEFT: PDF Text */}
-                        <div className="flex flex-col min-h-0">
-                            <h3 className="text-sm font-medium mb-2 flex items-center gap-2">
+                        <div className="flex flex-col min-h-0 h-full">
+                            <h3 className="text-sm font-medium mb-2 flex items-center gap-2 shrink-0">
                                 Extracted Text
                                 {extractedText && (
                                     <span className="text-xs text-muted-foreground font-normal">
@@ -414,8 +414,8 @@ export default function NewAuditPage() {
                         </div>
 
                         {/* RIGHT: Rules */}
-                        <div className="flex flex-col min-h-0">
-                            <h3 className="text-sm font-medium mb-2 flex items-center gap-2">
+                        <div className="flex flex-col min-h-0 h-full">
+                            <h3 className="text-sm font-medium mb-2 flex items-center gap-2 shrink-0">
                                 Generated Rules
                                 {pdfStage === 'ready' && (
                                     <span className="text-xs text-muted-foreground font-normal">

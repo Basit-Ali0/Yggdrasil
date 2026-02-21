@@ -116,9 +116,9 @@ export function PolicyUpdateSheet({ policyId, open, onOpenChange }: PolicyUpdate
                         <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
                     </div>
                 ) : (
-                    <div className="flex h-full flex-col">
+                    <div className="flex h-full flex-col overflow-hidden">
                         {/* Header */}
-                        <SheetHeader className="border-b px-6 py-4">
+                        <SheetHeader className="border-b px-6 py-4 shrink-0">
                             <SheetTitle className="text-lg">Update Policies</SheetTitle>
                             <SheetDescription className="flex items-center gap-2">
                                 {policy.name}
@@ -129,8 +129,8 @@ export function PolicyUpdateSheet({ policyId, open, onOpenChange }: PolicyUpdate
                         </SheetHeader>
 
                         {/* Body */}
-                        <ScrollArea className="flex-1 px-6 py-4">
-                            <div className="space-y-6">
+                        <ScrollArea className="flex-1">
+                            <div className="px-6 py-4 space-y-6">
                                 {/* Section 1: Active Rules */}
                                 <div>
                                     <div className="flex items-center justify-between mb-3">

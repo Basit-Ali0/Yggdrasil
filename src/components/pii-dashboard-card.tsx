@@ -48,11 +48,24 @@ export function PIIDashboardCard({ scanId }: PIIDashboardCardProps) {
                         </Badge>
                     </CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-3">
-                    <p className="text-sm text-muted-foreground">
-                        {openFindings.length} finding{openFindings.length !== 1 ? 's' : ''}
-                        {parts.length > 0 && ` (${parts.join(', ')})`}
-                    </p>
+                <CardContent className="space-y-4">
+                    <div className="space-y-1">
+                        <p className="text-sm text-muted-foreground">
+                            {openFindings.length} finding{openFindings.length !== 1 ? 's' : ''} detected that may contain personally identifiable information:
+                        </p>
+                        <div className="flex flex-wrap gap-2 mt-2">
+                            {openFindings.slice(0, 5).map((f, i) => (
+                                <Badge key={i} variant="outline" className="bg-ruby/5 border-ruby/20 text-[10px] py-0">
+                                    {f.column_name}: {f.pii_type.replace(/_/g, ' ')}
+                                </Badge>
+                            ))}
+                            {openFindings.length > 5 && (
+                                <span className="text-[10px] text-muted-foreground">
+                                    + {openFindings.length - 5} more
+                                </span>
+                            )}
+                        </div>
+                    </div>
                     <Button variant="outline" size="sm" onClick={() => setDialogOpen(true)}>
                         View Details
                     </Button>
