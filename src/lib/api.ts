@@ -3,9 +3,6 @@
 // Typed fetch wrapper with error handling + retry
 // ============================================================
 
-import { useAuthStore } from '@/stores/auth-store';
-import { DEMO_USER_ID } from './types';
-
 interface ApiError {
     error: string;
     message: string;
@@ -54,17 +51,9 @@ async function fetchWithRetry(
 }
 
 function getHeaders(): HeadersInit {
-    const headers: HeadersInit = {
+    return {
         'Content-Type': 'application/json',
     };
-
-    // Add demo user header if in demo mode
-    const { isDemo } = useAuthStore.getState();
-    if (isDemo) {
-        headers['x-demo-user-id'] = DEMO_USER_ID;
-    }
-
-    return headers;
 }
 
 export const api = {
@@ -72,6 +61,7 @@ export const api = {
         const response = await fetchWithRetry(`/api${path}`, {
             method: 'GET',
             headers: getHeaders(),
+            credentials: 'same-origin',
         });
 
         const data = await response.json();
@@ -91,6 +81,7 @@ export const api = {
         const response = await fetchWithRetry(`/api${path}`, {
             method: 'POST',
             headers: getHeaders(),
+            credentials: 'same-origin',
             body: body ? JSON.stringify(body) : undefined,
         });
 
@@ -111,6 +102,7 @@ export const api = {
         const response = await fetchWithRetry(`/api${path}`, {
             method: 'PATCH',
             headers: getHeaders(),
+            credentials: 'same-origin',
             body: JSON.stringify(body),
         });
 
@@ -129,15 +121,9 @@ export const api = {
 
     async upload<T>(path: string, formData: FormData): Promise<T> {
         // Don't set Content-Type — browser handles multipart boundary
-        const headers: HeadersInit = {};
-        const { isDemo } = useAuthStore.getState();
-        if (isDemo) {
-            headers['x-demo-user-id'] = DEMO_USER_ID;
-        }
-
         const response = await fetchWithRetry(`/api${path}`, {
             method: 'POST',
-            headers,
+            credentials: 'same-origin',
             body: formData,
         });
 

@@ -1,12 +1,15 @@
 // ============================================================
 // Auth Store — Yggdrasil
-// Real Supabase Auth + demo mode toggle
+// Real Supabase Auth — no hardcoded user IDs
 // ============================================================
 
 import { create } from 'zustand';
 import { getSupabaseBrowser } from '@/lib/supabase-browser';
-import { DEMO_USER_ID } from '@/lib/types';
 import type { User, Session } from '@supabase/supabase-js';
+
+// Demo account credentials (pre-created in Supabase)
+const DEMO_EMAIL = 'demo@yggdrasil.ai';
+const DEMO_PASSWORD = 'demo-yggdrasil-2024';
 
 interface AuthState {
     user: User | null;
@@ -21,11 +24,11 @@ interface AuthState {
     signIn: (email: string, password: string) => Promise<void>;
     signUp: (email: string, password: string) => Promise<{ needsConfirmation: boolean }>;
     signOut: () => Promise<void>;
-    enableDemoMode: () => void;
+    enableDemoMode: () => Promise<void>;
     clearError: () => void;
 
     // Computed
-    getUserId: () => string;
+    getUserId: () => string | null;
     isAuthenticated: () => boolean;
 }
 
@@ -132,35 +135,79 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                 isDemo: false,
                 isLoading: false,
             });
+            // Clean up demo flag
+            if (typeof window !== 'undefined') {
+                localStorage.removeItem('demo_session');
+            }
         } catch {
             set({ isLoading: false });
         }
     },
 
-    enableDemoMode: () => {
-        set({
-            isDemo: true,
-            isLoading: false,
-            isInitialized: true,
-            user: null,
-            session: null,
-        });
-        // Store demo flag in localStorage for persistence
-        if (typeof window !== 'undefined') {
-            localStorage.setItem('demo_session', DEMO_USER_ID);
+    enableDemoMode: async () => {
+        // Demo mode = sign in with the pre-created demo account
+        set({ isLoading: true, error: null });
+        try {
+            const supabase = getSupabaseBrowser();
+            const { data, error } = await supabase.auth.signInWithPassword({
+                email: DEMO_EMAIL,
+                password: DEMO_PASSWORD,
+            });
+
+            if (error) {
+                // If demo account doesn't exist yet, try to create it
+                const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+                    email: DEMO_EMAIL,
+                    password: DEMO_PASSWORD,
+                });
+
+                if (signUpError) {
+                    set({
+                        error: `Demo mode unavailable: ${signUpError.message}`,
+                        isLoading: false,
+                        isInitialized: true,
+                    });
+                    return;
+                }
+
+                set({
+                    user: signUpData.user,
+                    session: signUpData.session,
+                    isDemo: true,
+                    isLoading: false,
+                    isInitialized: true,
+                });
+            } else {
+                set({
+                    user: data.user,
+                    session: data.session,
+                    isDemo: true,
+                    isLoading: false,
+                    isInitialized: true,
+                });
+            }
+
+            if (typeof window !== 'undefined') {
+                localStorage.setItem('demo_session', 'true');
+            }
+        } catch {
+            set({
+                error: 'Failed to enable demo mode.',
+                isLoading: false,
+                isInitialized: true,
+            });
         }
     },
 
     clearError: () => set({ error: null }),
 
     getUserId: () => {
-        const { isDemo, user } = get();
-        if (isDemo) return DEMO_USER_ID;
-        return user?.id ?? DEMO_USER_ID;
+        const { user } = get();
+        return user?.id ?? null;
     },
 
     isAuthenticated: () => {
-        const { isDemo, session } = get();
-        return isDemo || !!session;
+        const { session } = get();
+        return !!session;
     },
 }));
