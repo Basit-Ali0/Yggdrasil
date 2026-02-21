@@ -8,12 +8,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
 import { Shield, Loader2, AlertCircle } from 'lucide-react';
 
 export default function LoginPage() {
     const router = useRouter();
-    const { signIn, enableDemoMode, isLoading, error, clearError } = useAuthStore();
+    const { signIn, isLoading, error, clearError } = useAuthStore();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
 
@@ -25,11 +24,6 @@ export default function LoginPage() {
         if (!currentError) {
             router.push('/audit/new');
         }
-    };
-
-    const handleDemoMode = () => {
-        enableDemoMode();
-        router.push('/audit/new');
     };
 
     return (
@@ -113,22 +107,6 @@ export default function LoginPage() {
                             </Link>
                         </div>
 
-                        <div className="relative my-6">
-                            <Separator />
-                            <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-xs text-muted-foreground">
-                                or
-                            </span>
-                        </div>
-
-                        <Button
-                            variant="outline"
-                            className="w-full"
-                            onClick={handleDemoMode}
-                            type="button"
-                        >
-                            <Shield className="mr-2 h-4 w-4" />
-                            Continue as Demo
-                        </Button>
                     </CardContent>
                 </Card>
             </div>

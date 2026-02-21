@@ -42,6 +42,7 @@ export async function GET(
             rules_total: rulesTotal ?? 0,
             created_at: scan.created_at,
             completed_at: scan.completed_at,
+            audit_name: scan.audit_name ?? null,
         });
 
     } catch (err) {

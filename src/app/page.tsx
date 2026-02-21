@@ -7,11 +7,10 @@ import { Shield, ArrowRight, Zap, Target, Clock } from 'lucide-react';
 
 export default function LandingPage() {
     const router = useRouter();
-    const { enableDemoMode } = useAuthStore();
+    const { isAuthenticated } = useAuthStore();
 
-    const handleDemo = () => {
-        enableDemoMode();
-        router.push('/audit/new');
+    const handleGetStarted = () => {
+        router.push(isAuthenticated() ? '/audit/new' : '/login');
     };
 
     return (
@@ -49,8 +48,8 @@ export default function LandingPage() {
 
                     {/* CTAs */}
                     <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
-                        <Button size="lg" className="gap-2 px-8" onClick={handleDemo}>
-                            Start Demo
+                        <Button size="lg" className="gap-2 px-8" onClick={handleGetStarted}>
+                            Get Started
                             <ArrowRight className="h-4 w-4" />
                         </Button>
                         <Button

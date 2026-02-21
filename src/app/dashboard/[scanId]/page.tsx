@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
+import Link from 'next/link';
 import { useViolationStore } from '@/stores/violation-store';
 import { useScanStore } from '@/stores/scan-store';
 import { StatCard } from '@/components/ui-custom/stat-card';
@@ -13,10 +14,102 @@ import { ExportActions } from '@/components/ui-custom/export-actions';
 import { DashboardSkeleton } from '@/components/ui-custom/loading-skeleton';
 import { EvidenceDrawer } from '@/components/evidence-drawer';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Badge } from '@/components/ui/badge';
-import { ShieldAlert, AlertTriangle, Users, TrendingUp, Search } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { Button } from '@/components/ui/button';
+import { ShieldAlert, AlertTriangle, Users, ChevronDown, ArrowRight } from 'lucide-react';
+import type { ViolationCase } from '@/lib/contracts';
+
+// -- Aggregation types --
+interface AccountEntry {
+    account_id: string;
+    violation_count: number;
+    total_amount: number;
+    violation_ids: string[];
+}
+
+interface RuleGroup {
+    rule_id: string;
+    violation_count: number;
+    accounts: AccountEntry[];
+}
+
+interface SeverityGroup {
+    severity: 'CRITICAL' | 'HIGH' | 'MEDIUM';
+    violation_count: number;
+    account_count: number;
+    rules: RuleGroup[];
+}
+
+function buildAggregation(cases: ViolationCase[]): SeverityGroup[] {
+    const severityMap = new Map<string, Map<string, Map<string, { count: number; amount: number; violationIds: string[] }>>>();
+
+    for (const c of cases) {
+        for (const v of c.violations) {
+            const sev = v.severity;
+            const rule = v.rule_id;
+            const account = c.account_id;
+
+            if (!severityMap.has(sev)) severityMap.set(sev, new Map());
+            const ruleMap = severityMap.get(sev)!;
+
+            if (!ruleMap.has(rule)) ruleMap.set(rule, new Map());
+            const accountMap = ruleMap.get(rule)!;
+
+            if (!accountMap.has(account)) accountMap.set(account, { count: 0, amount: 0, violationIds: [] });
+            const entry = accountMap.get(account)!;
+            entry.count++;
+            entry.amount += v.amount;
+            entry.violationIds.push(v.id);
+        }
+    }
+
+    const severityOrder = ['CRITICAL', 'HIGH', 'MEDIUM'] as const;
+    const groups: SeverityGroup[] = [];
+
+    for (const sev of severityOrder) {
+        const ruleMap = severityMap.get(sev);
+        if (!ruleMap) continue;
+
+        const uniqueAccounts = new Set<string>();
+        let totalViolations = 0;
+        const rules: RuleGroup[] = [];
+
+        for (const [ruleId, accountMap] of ruleMap) {
+            const accounts: AccountEntry[] = [];
+            let ruleViolationCount = 0;
+
+            for (const [accountId, entry] of accountMap) {
+                uniqueAccounts.add(accountId);
+                ruleViolationCount += entry.count;
+                accounts.push({
+                    account_id: accountId,
+                    violation_count: entry.count,
+                    total_amount: entry.amount,
+                    violation_ids: entry.violationIds,
+                });
+            }
+
+            totalViolations += ruleViolationCount;
+            rules.push({
+                rule_id: ruleId,
+                violation_count: ruleViolationCount,
+                accounts: accounts.sort((a, b) => b.total_amount - a.total_amount),
+            });
+        }
+
+        rules.sort((a, b) => b.violation_count - a.violation_count);
+
+        groups.push({
+            severity: sev,
+            violation_count: totalViolations,
+            account_count: uniqueAccounts.size,
+            rules,
+        });
+    }
+
+    return groups;
+}
 
 export default function DashboardPage() {
     const params = useParams();
@@ -26,7 +119,7 @@ export default function DashboardPage() {
         cases, complianceScore, totalCases, totalViolations,
         fetchCases, fetchScore, isLoadingCases, error, scoreDetails,
     } = useViolationStore();
-    const { scanHistory, fetchHistory } = useScanStore();
+    const { currentScan } = useScanStore();
 
     const [selectedViolationId, setSelectedViolationId] = useState<string | null>(null);
     const [drawerOpen, setDrawerOpen] = useState(false);
@@ -34,8 +127,9 @@ export default function DashboardPage() {
     useEffect(() => {
         fetchCases(scanId);
         fetchScore(scanId);
-        fetchHistory();
-    }, [scanId, fetchCases, fetchScore, fetchHistory]);
+    }, [scanId, fetchCases, fetchScore]);
+
+    const aggregation = useMemo(() => buildAggregation(cases), [cases]);
 
     if (error) {
         return <ErrorState message={error} onRetry={() => fetchCases(scanId)} />;
@@ -48,12 +142,7 @@ export default function DashboardPage() {
     const criticalCount = scoreDetails?.by_severity?.CRITICAL ?? 0;
     const highCount = scoreDetails?.by_severity?.HIGH ?? 0;
 
-    // Trend data from scan history
-    const trendData = scanHistory.map((s) => ({
-        date: new Date(s.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        score: s.score,
-        violations: s.violation_count,
-    }));
+    const auditName = currentScan?.audit_name;
 
     const handleViolationClick = (violationId: string) => {
         setSelectedViolationId(violationId);
@@ -65,7 +154,9 @@ export default function DashboardPage() {
             {/* Header with Export */}
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                    <h1 className="text-2xl font-semibold tracking-tight">Compliance Dashboard</h1>
+                    <h1 className="text-2xl font-semibold tracking-tight">
+                        {auditName || 'Compliance Dashboard'}
+                    </h1>
                     <p className="mt-1 text-muted-foreground">
                         Scan results and compliance score for your audit.
                     </p>
@@ -103,152 +194,87 @@ export default function DashboardPage() {
                 />
             </div>
 
-            {/* Main Content: 2 panels */}
-            <div className="grid gap-6 lg:grid-cols-3">
-                {/* Left: Cases Table */}
-                <Card className="lg:col-span-2">
-                    <CardHeader className="pb-3">
-                        <CardTitle className="flex items-center gap-2 text-base">
-                            <Search className="h-4 w-4" />
-                            Account Cases
+            {/* Aggregated Violations */}
+            <Card>
+                <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center justify-between text-base">
+                        <span className="flex items-center gap-2">
+                            Violation Summary
                             {totalViolations > 0 && (
-                                <Badge variant="secondary" className="ml-auto text-xs">
+                                <Badge variant="secondary" className="text-xs">
                                     {totalViolations} total
                                 </Badge>
                             )}
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        {cases.length === 0 ? (
-                            <EmptyState
-                                icon={ShieldAlert}
-                                title="No violations found"
-                                description="Your data appears compliant with the selected policy."
-                            />
-                        ) : (
-                            <div className="overflow-x-auto">
-                                <Table>
-                                    <TableHeader>
-                                        <TableRow>
-                                            <TableHead>Account</TableHead>
-                                            <TableHead>Violations</TableHead>
-                                            <TableHead>Severity</TableHead>
-                                            <TableHead className="hidden sm:table-cell">Top Rule</TableHead>
-                                            <TableHead className="text-right">Amount</TableHead>
-                                        </TableRow>
-                                    </TableHeader>
-                                    <TableBody>
-                                        {cases.map((c) => (
-                                            <TableRow
-                                                key={c.account_id}
-                                                className="cursor-pointer transition-colors hover:bg-muted/50"
-                                                onClick={() =>
-                                                    c.violations[0] && handleViolationClick(c.violations[0].id)
-                                                }
-                                                tabIndex={0}
-                                                onKeyDown={(e) => {
-                                                    if (e.key === 'Enter' && c.violations[0]) {
-                                                        handleViolationClick(c.violations[0].id);
-                                                    }
-                                                }}
-                                                role="button"
-                                                aria-label={`View violations for account ${c.account_id}`}
-                                            >
-                                                <TableCell className="font-mono-code text-sm">
-                                                    {c.account_id}
-                                                </TableCell>
-                                                <TableCell>
-                                                    <Badge variant="secondary">
-                                                        {c.violation_count}
-                                                    </Badge>
-                                                </TableCell>
-                                                <TableCell>
-                                                    <SeverityBadge severity={c.max_severity} />
-                                                </TableCell>
-                                                <TableCell className="hidden text-sm text-muted-foreground sm:table-cell">
-                                                    {c.top_rule}
-                                                </TableCell>
-                                                <TableCell className="text-right font-mono-code text-sm">
-                                                    ${c.total_amount.toLocaleString()}
-                                                </TableCell>
-                                            </TableRow>
-                                        ))}
-                                    </TableBody>
-                                </Table>
-                            </div>
+                        </span>
+                        {cases.length > 0 && (
+                            <Button asChild variant="outline" size="sm">
+                                <Link href={`/dashboard/${scanId}/cases`} className="gap-1.5">
+                                    View All Cases
+                                    <ArrowRight className="h-3.5 w-3.5" />
+                                </Link>
+                            </Button>
                         )}
-                    </CardContent>
-                </Card>
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    {aggregation.length === 0 ? (
+                        <EmptyState
+                            icon={ShieldAlert}
+                            title="No violations found"
+                            description="Your data appears compliant with the selected policy."
+                        />
+                    ) : (
+                        <div className="space-y-2">
+                            {aggregation.map((sevGroup) => (
+                                <Collapsible key={sevGroup.severity} className="rounded-lg border">
+                                    <CollapsibleTrigger className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/50 [&[data-state=open]>svg:first-child]:rotate-90">
+                                        <ChevronDown className="h-4 w-4 shrink-0 -rotate-90 text-muted-foreground transition-transform duration-200" />
+                                        <SeverityBadge severity={sevGroup.severity} />
+                                        <span className="text-sm text-muted-foreground">
+                                            {sevGroup.violation_count} violation{sevGroup.violation_count !== 1 ? 's' : ''}, {sevGroup.account_count} account{sevGroup.account_count !== 1 ? 's' : ''}
+                                        </span>
+                                    </CollapsibleTrigger>
 
-                {/* Right: Scan History + Trends */}
-                <Card>
-                    <CardHeader className="pb-3">
-                        <CardTitle className="flex items-center gap-2 text-base">
-                            <TrendingUp className="h-4 w-4" />
-                            Scan Trend
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        {trendData.length > 1 ? (
-                            <ResponsiveContainer width="100%" height={200}>
-                                <LineChart data={trendData}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                                    <XAxis
-                                        dataKey="date"
-                                        tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
-                                        tickLine={false}
-                                        axisLine={false}
-                                    />
-                                    <YAxis
-                                        domain={[0, 100]}
-                                        tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
-                                        tickLine={false}
-                                        axisLine={false}
-                                    />
-                                    <Tooltip
-                                        contentStyle={{
-                                            backgroundColor: 'var(--card)',
-                                            border: '1px solid var(--border)',
-                                            borderRadius: '8px',
-                                            fontSize: '12px',
-                                        }}
-                                    />
-                                    <Line
-                                        type="monotone"
-                                        dataKey="score"
-                                        stroke="var(--azure)"
-                                        strokeWidth={2}
-                                        dot={{ r: 3, fill: 'var(--azure)' }}
-                                        activeDot={{ r: 5 }}
-                                    />
-                                </LineChart>
-                            </ResponsiveContainer>
-                        ) : (
-                            <div className="flex h-[200px] items-center justify-center text-sm text-muted-foreground">
-                                Run more scans to see trends
-                            </div>
-                        )}
+                                    <CollapsibleContent>
+                                        <div className="border-t px-4 pb-3 pt-1">
+                                            {sevGroup.rules.map((ruleGroup) => (
+                                                <Collapsible key={ruleGroup.rule_id} className="mt-2">
+                                                    <CollapsibleTrigger className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-muted/50 [&[data-state=open]>svg:first-child]:rotate-90">
+                                                        <ChevronDown className="h-3.5 w-3.5 shrink-0 -rotate-90 text-muted-foreground transition-transform duration-200" />
+                                                        <span className="font-medium">{ruleGroup.rule_id}</span>
+                                                        <Badge variant="secondary" className="ml-auto text-xs">
+                                                            {ruleGroup.violation_count}
+                                                        </Badge>
+                                                    </CollapsibleTrigger>
 
-                        {/* History List */}
-                        <div className="mt-4 space-y-2">
-                            {scanHistory.slice(0, 5).map((s) => (
-                                <div
-                                    key={s.id}
-                                    className="flex items-center justify-between rounded-lg border p-2.5 text-sm"
-                                >
-                                    <span className="text-muted-foreground">
-                                        {new Date(s.created_at).toLocaleDateString()}
-                                    </span>
-                                    <div className="flex items-center gap-2">
-                                        <Badge variant="secondary">{s.violation_count} issues</Badge>
-                                        <span className="font-medium">{s.score}%</span>
-                                    </div>
-                                </div>
+                                                    <CollapsibleContent>
+                                                        <div className="ml-8 mt-1 space-y-1">
+                                                            {ruleGroup.accounts.map((acc) => (
+                                                                <button
+                                                                    key={acc.account_id}
+                                                                    className="flex w-full items-center justify-between rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted/50"
+                                                                    onClick={() => acc.violation_ids[0] && handleViolationClick(acc.violation_ids[0])}
+                                                                >
+                                                                    <span className="font-mono-code">
+                                                                        {acc.account_id}
+                                                                    </span>
+                                                                    <span className="font-mono-code">
+                                                                        ${acc.total_amount.toLocaleString()}
+                                                                    </span>
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </CollapsibleContent>
+                                                </Collapsible>
+                                            ))}
+                                        </div>
+                                    </CollapsibleContent>
+                                </Collapsible>
                             ))}
                         </div>
-                    </CardContent>
-                </Card>
-            </div>
+                    )}
+                </CardContent>
+            </Card>
 
             {/* Evidence Drawer */}
             <EvidenceDrawer

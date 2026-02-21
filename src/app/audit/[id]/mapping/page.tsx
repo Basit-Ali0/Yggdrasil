@@ -126,6 +126,19 @@ export default function MappingBridgePage() {
                     <CardTitle className="text-base">Column Mapping</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
+                    {/* Column header labels */}
+                    <div className="flex items-center gap-4 px-3 pb-1">
+                        <div className="min-w-[120px]">
+                            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Policy Field</span>
+                        </div>
+                        <span className="invisible">→</span>
+                        <div className="min-w-[120px]">
+                            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">CSV Column</span>
+                        </div>
+                        <div className="flex-1">
+                            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Confidence</span>
+                        </div>
+                    </div>
                     {Object.entries(mappingConfig).map(([ruleField, csvColumn]) => {
                         const confidence = getConfidence(ruleField);
                         const isLowConfidence = confidence < 90;

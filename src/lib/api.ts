@@ -66,7 +66,7 @@ async function getHeaders(): Promise<HeadersInit> {
             headers['Authorization'] = `Bearer ${session.access_token}`;
         }
     } catch {
-        // No auth available — request will rely on demo mode fallback
+        // No auth available — request will fail with 401
     }
 
     return headers;
