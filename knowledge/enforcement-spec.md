@@ -1,4 +1,4 @@
-# Enforcement Specification: PolicyGuard AI
+# Enforcement Specification: Yggdrasil
 
 > **NOTE FOR LLMs:** If you need a condensed overview of this project, read [gist.md](../gist.md).
 

@@ -1,9 +1,9 @@
-# API Contracts: PolicyGuard AI
+# API Contracts: Yggdrasil
 
 **Purpose:** Single source of truth for request/response shapes at every screen transition.
 Both Person A (frontend) and Person B (backend) code against this file.
 
-> If this file conflicts with API-Specification-PolicyGuard-AI.md, THIS FILE wins.
+> If this file conflicts with API-Specification-Yggdrasil.md, THIS FILE wins.
 > The full API spec has more detail; this file has the integration-critical shapes only.
 
 ---

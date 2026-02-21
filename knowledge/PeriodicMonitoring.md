@@ -1,6 +1,6 @@
 # PRD: Manual Rescan with Diff Detection
 
-**Project:** PolicyGuard AI  
+**Project:** Yggdrasil  
 **Feature:** Manual Rescan with Intelligent Diff Detection  
 **Status:** Ready for Implementation  
 
@@ -292,6 +292,6 @@ const calculateDelta = (previousViolations: Violation[], currentViolations: Viol
 
 ## Related Documentation
 
-- [API-Specification-PolicyGuard-AI.md](./API-Specification-PolicyGuard-AI.md)
+- [API-Specification-Yggdrasil.md](./API-Specification-Yggdrasil.md)
 - [Integrations.md](./Integrations.md)
-- [UserStories-PolicyGuard-AI.md](./UserStories-PolicyGuard-AI.md)
+- [UserStories-Yggdrasil.md](./UserStories-Yggdrasil.md)

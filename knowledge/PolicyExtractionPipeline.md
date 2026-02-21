@@ -1,10 +1,10 @@
-# Policy Extraction Pipeline: PolicyGuard AI
+# Policy Extraction Pipeline: Yggdrasil
 
 > **⚠️ DEPRECATED:** This document's content has been merged into [LLMSystemPrompts.md](./LLMSystemPrompts.md). Please refer to that document for the latest technical specifications.
 >
 > **Reason:** Technical content moved to LLMSystemPrompts.md. Pipeline diagrams preserved here for reference.
 
-**Project:** PolicyGuard AI  
+**Project:** Yggdrasil  
 **Status:** P0 (MVP)  
 
 > **NOTE FOR LLMs:** If you need a condensed overview of this project, read [gist.md](../gist.md). That file contains a plain-text summary of the entire project context.

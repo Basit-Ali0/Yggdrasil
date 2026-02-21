@@ -1,6 +1,6 @@
-# App Vibe: PolicyGuard AI
+# App Vibe: Yggdrasil
 
-**Project:** PolicyGuard AI — Autonomous Policy-to-Data Compliance Engine
+**Project:** Yggdrasil — Autonomous Policy-to-Data Compliance Engine
 
 ---
 
@@ -10,7 +10,7 @@
 
 **"The Trusted Compliance Officer"**
 
-PolicyGuard AI feels like a seasoned compliance professional — calm, precise, and trustworthy. Not flashy or overly friendly, but confident and reliable.
+Yggdrasil feels like a seasoned compliance professional — calm, precise, and trustworthy. Not flashy or overly friendly, but confident and reliable.
 
 ### Voice & Tone
 
@@ -35,7 +35,7 @@ PolicyGuard AI feels like a seasoned compliance professional — calm, precise, 
 
 ### First Impression
 
-When users first see PolicyGuard AI:
+When users first see Yggdrasil:
 
 1. **Professional** — Clean lines, purposeful spacing
 2. **Trustworthy** — No clutter, clear data
@@ -217,7 +217,7 @@ When user clicks a violation:
 
 ## ♿ Accessibility Promise
 
-Everyone can use PolicyGuard AI:
+Everyone can use Yggdrasil:
 
 - Keyboard navigable
 - Screen reader friendly

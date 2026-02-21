@@ -1,6 +1,6 @@
-# Data Encryption & Security: PolicyGuard AI
+# Data Encryption & Security: Yggdrasil
 
-**Project:** PolicyGuard AI  
+**Project:** Yggdrasil  
 **Status:** P0 (Required for MVP)  
 
 > **NOTE FOR LLMs:** If you need a condensed overview of this project, read [gist.md](../gist.md). That file contains a plain-text summary of the entire project context.
@@ -9,7 +9,7 @@
 
 ## Overview
 
-This document outlines the data encryption and security architecture for PolicyGuard AI. We ensure user data remains private and accessible only to the user.
+This document outlines the data encryption and security architecture for Yggdrasil. We ensure user data remains private and accessible only to the user.
 
 **Core Principle:** User data is encrypted such that even we (the platform) cannot access it without user authorization.
 
@@ -42,7 +42,7 @@ This document outlines the data encryption and security architecture for PolicyG
                              │
                              ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                     PolicyGuard Server                        │
+│                     Yggdrasil Server                        │
 │                                                              │
 │  5. Store encrypted data (we cannot read)                  │
 │  6. Apply RLS policies                                      │
@@ -250,7 +250,7 @@ See [Telemetry.md](./Telemetry.md) for details.
                          │
                          ▼
 ┌─────────────────────────────────────────────────────────┐
-│              PolicyGuard Server (Never sees plaintext)   │
+│              Yggdrasil Server (Never sees plaintext)   │
 │  - Stores encrypted data                                 │
 │  - Cannot decrypt (no key)                              │
 │  - Only stores/retrieves ciphertext                     │

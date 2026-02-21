@@ -1,6 +1,6 @@
-# Product Positioning: PolicyGuard AI
+# Product Positioning: Yggdrasil
 
-**Project:** PolicyGuard AI
+**Project:** Yggdrasil
 
 ---
 
@@ -8,7 +8,7 @@
 
 ### Primary: Standalone Web Application (SaaS)
 
-PolicyGuard AI is a **web-based compliance platform** that users access through a browser.
+Yggdrasil is a **web-based compliance platform** that users access through a browser.
 
 ### Secondary: Integration-Ready (Future)
 
@@ -34,7 +34,7 @@ They need to:
 - Fix violations quickly
 - Prove compliance to auditors
 
-PolicyGuard AI does:
+Yggdrasil does:
 1. Upload policy PDF → Extract rules automatically
 2. Connect database → Scan for violations
 3. Review findings → Fix issues
@@ -63,7 +63,7 @@ They need:
 - Role-based access
 - Integration with existing tools
 
-PolicyGuard AI provides:
+Yggdrasil provides:
 - Centralized compliance dashboard
 - Scheduled scans
 - Team workspaces
@@ -81,7 +81,7 @@ PolicyGuard AI provides:
 │                   COMPLIANCE TOOLS MARKET                     │
 ├─────────────────────────────────────────────────────────────┤
 │                                                              │
-│   Traditional GRC        │    PolicyGuard AI                 │
+│   Traditional GRC        │    Yggdrasil                 │
 │   (OneTrust, Vanta)    │    (Our Position)                 │
 │                          │                                   │
 │   - Enterprise focus    │    - Startup/SME focus          │
@@ -122,7 +122,7 @@ For MVP, we build a **standalone web application**:
 
 ```
 User Flow:
-1. Go to policyguard.ai
+1. Go to yggdrasil.ai
 2. Sign up / Login
 3. Upload policy PDF
 4. Connect database / Upload CSV
@@ -254,7 +254,7 @@ Hackathon (24h)     Launch (Month 1-3)      Enterprise (Month 6+)
 
 **Who** have policy documents and databases
 
-**PolicyGuard AI** is a compliance platform
+**Yggdrasil** is a compliance platform
 
 **That** automatically extracts rules from PDFs and scans databases for violations
 
@@ -291,7 +291,7 @@ Hackathon (24h)     Launch (Month 1-3)      Enterprise (Month 6+)
 
 ```bash
 # API Access (Future)
-curl -X POST https://api.policyguard.ai/v1/scan \
+curl -X POST https://api.yggdrasil.ai/v1/scan \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -d '{"policy_id": "xxx", "database": "xxx"}'
 ```

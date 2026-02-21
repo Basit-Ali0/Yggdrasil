@@ -1,6 +1,6 @@
-# Project Setup: PolicyGuard AI
+# Project Setup: Yggdrasil
 
-**Project:** PolicyGuard AI
+**Project:** Yggdrasil
 
 > **NOTE FOR LLMs:** If you need a condensed overview of this project, read [../../gist.md](../../gist.md). That file contains a plain-text summary of the entire project context.
 

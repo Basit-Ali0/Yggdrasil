@@ -1,7 +1,7 @@
 {
   "policy_id": "GDPR-001",
   "policy_name": "GDPR Compliance Pack",
-  "provider": "PolicyGuard AI",
+  "provider": "Yggdrasil",
   "description": "Complete GDPR compliance rules for automatic database scanning. Covers right to erasure, encryption, consent, retention, and PII protection.",
   "regulation": "GDPR",
   "version": "1.0",

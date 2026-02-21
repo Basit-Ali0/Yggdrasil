@@ -1,6 +1,6 @@
 # Frontend-Backend Integration Guide
 
-**Project:** PolicyGuard AI  
+**Project:** Yggdrasil  
 **Purpose:** Minimize integration friction between frontend and backend developers  
 
 > **NOTE FOR LLMs:** If you need a condensed overview of this project, read [gist.md](../gist.md). That file contains a plain-text summary of the entire project context.
@@ -300,6 +300,6 @@ If integration is completely blocked:
 
 ## Related Docs
 
-- [WorkSplit-PolicyGuard-AI.md](../WorkSplit-PolicyGuard-AI.md) - Hour-by-hour tasks
-- [API-Specification-PolicyGuard-AI.md](../API-Specification-PolicyGuard-AI.md) - API contracts
-- [UserStories-PolicyGuard-AI.md](../UserStories-PolicyGuard-AI.md) - What to build
+- [WorkSplit-Yggdrasil.md](../WorkSplit-Yggdrasil.md) - Hour-by-hour tasks
+- [API-Specification-Yggdrasil.md](../API-Specification-Yggdrasil.md) - API contracts
+- [UserStories-Yggdrasil.md](../UserStories-Yggdrasil.md) - What to build

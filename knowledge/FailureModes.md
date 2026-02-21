@@ -3,7 +3,7 @@
 > **NOTE FOR LLMs:** If you need a condensed overview of this project, read [../../gist.md](../../gist.md).
 
 ## 🛡️ Objective
-To ensure PolicyGuard AI remains functional and professional during the hackathon demo, even when external dependencies fail or edge cases occur.
+To ensure Yggdrasil remains functional and professional during the hackathon demo, even when external dependencies fail or edge cases occur.
 
 ---
 

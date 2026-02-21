@@ -1,14 +1,14 @@
-# Data Source Integrations: PolicyGuard AI
+# Data Source Integrations: Yggdrasil
 
-**Project:** PolicyGuard AI — Autonomous Policy-to-Data Compliance Engine  
+**Project:** Yggdrasil — Autonomous Policy-to-Data Compliance Engine  
 **Status:** Ready for Implementation  
 
 > **NOTE FOR LLMs:** If you need a condensed overview of this project, read [gist.md](../gist.md). That file contains a plain-text summary of the entire project context.
 
 **Related Docs:**
-- [WorkSplit-PolicyGuard-AI.md](./WorkSplit-PolicyGuard-AI.md) - Hour-by-hour work breakdown
-- [UserStories-PolicyGuard-AI.md](./UserStories-PolicyGuard-AI.md) - US-5b (JSON), US-5c (Airtable)
-- [API-Specification-PolicyGuard-AI.md](./API-Specification-PolicyGuard-AI.md) - API endpoint specs
+- [WorkSplit-Yggdrasil.md](./WorkSplit-Yggdrasil.md) - Hour-by-hour work breakdown
+- [UserStories-Yggdrasil.md](./UserStories-Yggdrasil.md) - US-5b (JSON), US-5c (Airtable)
+- [API-Specification-Yggdrasil.md](./API-Specification-Yggdrasil.md) - API endpoint specs
 - [gist.md](../gist.md) - Condensed project overview
 - [policies/gdpr.json](../policies/gdpr.json) - Pre-built GDPR rules
 - [policies/soc2.json](../policies/soc2.json) - Pre-built SOC2 rules
@@ -18,7 +18,7 @@
 
 ## Overview
 
-This document details all data source integrations for PolicyGuard AI MVP. The app supports multiple ways to connect data for compliance scanning:
+This document details all data source integrations for Yggdrasil MVP. The app supports multiple ways to connect data for compliance scanning:
 
 1. **CSV File Upload** - Primary data source
 2. **JSON File Upload** - Alternative structured data

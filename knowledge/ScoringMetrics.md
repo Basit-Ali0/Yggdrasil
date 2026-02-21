@@ -1,6 +1,6 @@
 # Scoring Metrics
 
-> Compliance score calculation for PolicyGuard AI
+> Compliance score calculation for Yggdrasil
 
 ## Overview
 

@@ -1,6 +1,6 @@
-# Telemetry & Data: PolicyGuard AI
+# Telemetry & Data: Yggdrasil
 
-**Project:** PolicyGuard AI
+**Project:** Yggdrasil
 
 ---
 

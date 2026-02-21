@@ -1,7 +1,7 @@
-POLICYGUARD AI - PROJECT GIST
+YGGDRASIL - PROJECT GIST
 
 PROJECT OVERVIEW
-PolicyGuard AI is an autonomous policy-to-data compliance engine built for a 24-hour hackathon. It bridges the gap between PDF policy documents and database enforcement by automatically extracting compliance rules from policies and scanning databases for violations.
+Yggdrasil is an autonomous policy-to-data compliance engine built for a 24-hour hackathon. It bridges the gap between PDF policy documents and database enforcement by automatically extracting compliance rules from policies and scanning databases for violations.
 
 TARGET USERS
 Compliance Officers in SMEs, Data Governance Teams, Startup CTOs preparing for GDPR, DPDP, or SOC2 audits. AML Compliance Officers, Financial Crime Investigators, and Fraud Prevention Teams using transaction monitoring systems. These users have PDF policies drafted by legal and databases or CSV datasets, need quick visibility into compliance risks, and require audit-ready evidence.
@@ -247,13 +247,13 @@ DOCUMENTATION STRUCTURE
 - problem-statement.md - Ground truth requirements
 
 ## Product
-- Feature-PolicyGuard-AI.md - Full specifications
-- UserStories-PolicyGuard-AI.md - User stories + acceptance criteria
-- WorkSplit-PolicyGuard-AI.md - Implementation timeline
+- Feature-Yggdrasil.md - Full specifications
+- UserStories-Yggdrasil.md - User stories + acceptance criteria
+- WorkSplit-Yggdrasil.md - Implementation timeline
 - UserFlows.md - User flow stories
 
 ## Technical
-- API-Specification-PolicyGuard-AI.md - API endpoints
+- API-Specification-Yggdrasil.md - API endpoints
 - Integrations.md - Data source specs
 - LLMSystemPrompts.md - LLM prompts + schemas
 - TechStackAcceleration.md - Implementation guide
@@ -269,7 +269,7 @@ DOCUMENTATION STRUCTURE
 - meta/DesignGuide.md, DataSecurity.md, DemoGuide.md
 
 ## Deprecated (Use Core Above)
-- Brief-PolicyGuard-AI.md → Use Feature-PolicyGuard-AI.md
-- PRFAQ-PolicyGuard-AI.md → Use Feature-PolicyGuard-AI.md
+- Brief-Yggdrasil.md → Use Feature-Yggdrasil.md
+- PRFAQ-Yggdrasil.md → Use Feature-Yggdrasil.md
 - ClarificationQuestions.md → Use UserStories + LLMSystemPrompts
 - PolicyExtractionPipeline.md → Use LLMSystemPrompts

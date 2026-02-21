@@ -1,6 +1,6 @@
-# Design Guide: PolicyGuard AI
+# Design Guide: Yggdrasil
 
-**Project:** PolicyGuard AI
+**Project:** Yggdrasil
 
 ---
 

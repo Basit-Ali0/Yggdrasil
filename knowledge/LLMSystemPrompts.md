@@ -1,6 +1,6 @@
-# LLM System Prompts for PolicyGuard AI
+# LLM System Prompts for Yggdrasil
 
-**Project:** PolicyGuard AI  
+**Project:** Yggdrasil  
 **Purpose:** System prompts and schemas for Gemini API integration  
 **Status:** Ready for Implementation  
 
@@ -8,7 +8,7 @@
 
 ## Overview
 
-This document provides production-ready system prompts and output schemas for each LLM use case in PolicyGuard AI. All prompts are optimized for Gemini API with structured output support.
+This document provides production-ready system prompts and output schemas for each LLM use case in Yggdrasil. All prompts are optimized for Gemini API with structured output support.
 
 ---
 
@@ -56,7 +56,7 @@ If a bullet point lacks a clear mathematical condition, mark "requires_clarifica
 
 ### System Prompt
 ```
-You are a data engineer. Your task is to map raw CSV headers to the standard PolicyGuard compliance schema.
+You are a data engineer. Your task is to map raw CSV headers to the standard Yggdrasil compliance schema.
 
 Standard Fields:
 - amount: The monetary value of the transaction
@@ -537,6 +537,6 @@ const rules = RuleSchema.array().parse(result.rules);
 
 ## Related Documentation
 
-- [API-Specification-PolicyGuard-AI.md](./API-Specification-PolicyGuard-AI.md)
+- [API-Specification-Yggdrasil.md](./API-Specification-Yggdrasil.md)
 - [ClarificationQuestions.md](./ClarificationQuestions.md)
 - [Integrations.md](./Integrations.md)

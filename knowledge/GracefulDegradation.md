@@ -1,13 +1,13 @@
 # Graceful Degradation: Non-Negotiable Feature
 
-**Project:** PolicyGuard AI  
+**Project:** Yggdrasil  
 **Status:** Required for MVP  
 
 ---
 
 ## Why This Is Non-Negotiable
 
-Every feature in PolicyGuard AI must handle failure states gracefully. Users depend on this system for compliance audits. Failures should never leave users stranded or confused.
+Every feature in Yggdrasil must handle failure states gracefully. Users depend on this system for compliance audits. Failures should never leave users stranded or confused.
 
 **Core Principle:** Partial success is still success. Complete failure should be rare.
 
@@ -249,6 +249,6 @@ interface PartialResult<T> {
 
 ## Related Documentation
 
-- [Feature-PolicyGuard-AI.md](./Feature-PolicyGuard-AI.md)
+- [Feature-Yggdrasil.md](./Feature-Yggdrasil.md)
 - [LLMSystemPrompts.md](./LLMSystemPrompts.md)
 - [Integrations.md](./Integrations.md)
