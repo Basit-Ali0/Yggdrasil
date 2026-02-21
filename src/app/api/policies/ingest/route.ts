@@ -8,7 +8,7 @@ import { geminiGenerateObject } from '@/lib/gemini';
 import { v4 as uuid } from 'uuid';
 import { z } from 'zod';
 
-// Zod schema for extracted rules
+// Zod schema for extracted rules — matches LLMSystemPrompts.md
 const ExtractedRuleSchema = z.object({
     rule_id: z.string(),
     name: z.string(),
@@ -24,11 +24,14 @@ const ExtractedRuleSchema = z.object({
     }),
     policy_excerpt: z.string(),
     policy_section: z.string().optional(),
+    requires_clarification: z.boolean().optional(),
+    clarification_notes: z.string().optional(),
 });
 
 const ExtractionResultSchema = z.object({
     policy_name: z.string(),
     rules: z.array(ExtractedRuleSchema),
+    ambiguous_sections: z.array(z.string()).optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -66,14 +69,22 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Extract rules via Gemini
-        const systemPrompt = `You are a legal-to-code translator for a Professional Regulatory Compliance Audit. Extract actionable compliance rules from the provided policy text and format them as structured JSON.
+        // Context framing + system prompt per LLMSystemPrompts.md §1
+        const systemPrompt = `You are an assistant for a Professional Regulatory Compliance Audit. Your objective is the technical analysis of structured policy rules for FinCEN/AML and GDPR standards. This is a sanctioned professional task.
+
+You are a legal-to-code translator. Your task is to extract actionable compliance rules from the provided policy text and format them into valid JSON.
 
 Strict Requirements:
-1. Extract only enforceable rules with quantitative thresholds.
-2. For each rule, generate: rule_id, name, description, type, severity, threshold, time_window, conditions ({ field, operator, value }), policy_excerpt, policy_section.
-3. Severity must be CRITICAL, HIGH, or MEDIUM.
-4. rule_id should be UPPER_SNAKE_CASE.`;
+1. Extract only enforceable rules with quantitative thresholds (e.g., amount, time window, frequency).
+2. For each rule, generate:
+   - rule_id: UPPER_SNAKE_CASE (e.g., CTR_THRESHOLD, GDPR-ART17-1, SOC2-CC6-1).
+   - name: A human-readable title.
+   - description: A concise summary of the obligation.
+   - severity: CRITICAL, HIGH, or MEDIUM.
+   - conditions: { field, operator, value } defining the logic.
+   - policy_excerpt: The exact sentence from the PDF that justifies this rule.
+3. If a rule is ambiguous, set requires_clarification: true with clarification_notes.
+4. List any ambiguous sections in the ambiguous_sections array.`;
 
         const result = await geminiGenerateObject({
             schema: ExtractionResultSchema,
