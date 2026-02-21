@@ -1,0 +1,155 @@
+{
+  "policy_id": "SOC2-001",
+  "policy_name": "SOC2 Compliance Pack",
+  "provider": "PolicyGuard AI",
+  "description": "Complete SOC2 Trust Services Criteria rules. Covers access controls (CC6), monitoring (CC7), change management (CC8), and confidentiality (C1).",
+  "regulation": "SOC2",
+  "version": "1.0",
+  "rule_count": 12,
+  "rules": [
+    {
+      "rule_id": "SOC2-CC6.1-001",
+      "type": "access",
+      "description": "Database access must be restricted to authorized users only - checks for unauthorized access patterns",
+      "severity": "high",
+      "conditions": {
+        "field": "is_authorized",
+        "operator": "equals",
+        "value": false
+      },
+      "remediation": "Implement role-based access control (RBAC) and remove unauthorized accounts"
+    },
+    {
+      "rule_id": "SOC2-CC6.1-002",
+      "type": "encryption",
+      "description": "Sensitive data at rest must be encrypted - checks encryption status of sensitive fields",
+      "severity": "high",
+      "conditions": {
+        "field": "encryption_at_rest",
+        "operator": "equals",
+        "value": false
+      },
+      "remediation": "Enable database-level encryption (TDE) and encrypt sensitive columns"
+    },
+    {
+      "rule_id": "SOC2-CC6.2-001",
+      "type": "access",
+      "description": "User access credentials must be properly registered before granting access",
+      "severity": "high",
+      "conditions": {
+        "field": "user_registered",
+        "operator": "equals",
+        "value": false
+      },
+      "remediation": "Implement formal user registration and authorization process"
+    },
+    {
+      "rule_id": "SOC2-CC6.3-001",
+      "type": "access",
+      "description": "Terminated user access must be promptly removed - checks for active accounts of terminated users",
+      "severity": "high",
+      "conditions": {
+        "field": "employment_status",
+        "operator": "equals",
+        "value": "terminated"
+      },
+      "remediation": "Implement automated user deprovisioning process within 24 hours of termination"
+    },
+    {
+      "rule_id": "SOC2-CC6.3-002",
+      "type": "access",
+      "description": "Access rights must follow least privilege principle - checks for excessive permissions",
+      "severity": "medium",
+      "conditions": {
+        "field": "privilege_level",
+        "operator": "equals",
+        "value": "admin"
+      },
+      "remediation": "Review and restrict elevated privileges to only those who require them"
+    },
+    {
+      "rule_id": "SOC2-CC7.2-001",
+      "type": "access",
+      "description": "System must monitor for anomalous access patterns - checks if audit logging is enabled",
+      "severity": "high",
+      "conditions": {
+        "field": "audit_logging_enabled",
+        "operator": "equals",
+        "value": false
+      },
+      "remediation": "Enable comprehensive audit logging for all database access"
+    },
+    {
+      "rule_id": "SOC2-CC7.2-002",
+      "type": "retention",
+      "description": "Audit logs must be retained for sufficient period for security monitoring",
+      "severity": "medium",
+      "conditions": {
+        "field": "log_retention_days",
+        "operator": "less_than",
+        "value": 90
+      },
+      "remediation": "Retain audit logs for at least 90 days (SOC2 Type II typically requires 12 months)"
+    },
+    {
+      "rule_id": "SOC2-CC7.3-001",
+      "type": "access",
+      "description": "Failed authentication attempts must be logged and monitored",
+      "severity": "medium",
+      "conditions": {
+        "field": "failed_auth_logged",
+        "operator": "equals",
+        "value": false
+      },
+      "remediation": "Implement logging of all failed authentication attempts"
+    },
+    {
+      "rule_id": "SOC2-CC8.1-001",
+      "type": "access",
+      "description": "Database changes must be authorized and documented",
+      "severity": "high",
+      "conditions": {
+        "field": "change_authorized",
+        "operator": "equals",
+        "value": false
+      },
+      "remediation": "Implement change management workflow with approval process"
+    },
+    {
+      "rule_id": "SOC2-C1.1-001",
+      "type": "retention",
+      "description": "Data retention procedures must conform to confidentiality commitments",
+      "severity": "medium",
+      "conditions": {
+        "field": "retention_policy_exists",
+        "operator": "equals",
+        "value": false
+      },
+      "remediation": "Document and implement data retention policy aligned with contractual commitments"
+    },
+    {
+      "rule_id": "SOC2-CC6.6-001",
+      "type": "access",
+      "description": "External access must be restricted through boundary protection controls",
+      "severity": "high",
+      "conditions": {
+        "field": "public_access",
+        "operator": "equals",
+        "value": true
+      },
+      "remediation": "Implement firewall rules, VPN, or VPC to restrict external access"
+    },
+    {
+      "rule_id": "SOC2-CC6.7-001",
+      "type": "encryption",
+      "description": "Data transmission must be restricted and encrypted - checks for sensitive data in transit",
+      "severity": "high",
+      "conditions": {
+        "field": "in_transit_encryption",
+        "operator": "equals",
+        "value": false
+      },
+      "remediation": "Implement TLS/SSL for all data transmissions and restrict transmission methods"
+    }
+  ]
+}
