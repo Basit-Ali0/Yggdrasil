@@ -1,5 +1,5 @@
 // ============================================================
-// Supabase Server Client — PolicyGuard AI
+// Supabase Server Client — Yggdrasil
 // Uses demo UUID for hackathon mode
 // ============================================================
 

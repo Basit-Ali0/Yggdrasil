@@ -1,5 +1,5 @@
 // ============================================================
-// PolicyGuard AI — Core TypeScript Types
+// Yggdrasil — Core TypeScript Types
 // Matches CONTRACTS.md shared types exactly
 // ============================================================
 
