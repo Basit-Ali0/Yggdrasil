@@ -12,17 +12,31 @@ import { SOC2_RULES, SOC2_POLICY_NAME } from '@/lib/policies/soc2';
 import { v4 as uuid } from 'uuid';
 import type { Rule } from '@/lib/types';
 
-function getPolicyPack(policyType: string): { name: string; rules: Rule[] } {
+function getPolicyPack(policyType: string, selectedCategories?: string[]): { name: string; rules: Rule[] } {
+    let pack: { name: string; rules: Rule[] };
+    
     switch (policyType) {
         case 'aml':
-            return { name: AML_POLICY_NAME, rules: AML_RULES };
+            pack = { name: AML_POLICY_NAME, rules: AML_RULES };
+            break;
         case 'gdpr':
-            return { name: GDPR_POLICY_NAME, rules: GDPR_RULES };
+            pack = { name: GDPR_POLICY_NAME, rules: GDPR_RULES };
+            break;
         case 'soc2':
-            return { name: SOC2_POLICY_NAME, rules: SOC2_RULES };
+            pack = { name: SOC2_POLICY_NAME, rules: SOC2_RULES };
+            break;
         default:
             throw new Error(`Unknown policy type: ${policyType}`);
     }
+
+    // Filter rules if categories are selected
+    if (selectedCategories && selectedCategories.length > 0) {
+        pack.rules = pack.rules.filter(rule => 
+            rule.category && selectedCategories.includes(rule.category)
+        );
+    }
+
+    return pack;
 }
 
 export async function POST(request: NextRequest) {
@@ -37,11 +51,11 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        const { name, policy_type } = parsed.data;
+        const { name, policy_type, selected_categories } = parsed.data;
         const userId = await getUserIdFromRequest(request);
         const supabase = await getSupabaseForRequest(request);
 
-        const pack = getPolicyPack(policy_type);
+        const pack = getPolicyPack(policy_type, selected_categories);
 
         // 1. Create the policy record
         const policyId = uuid();
@@ -66,21 +80,29 @@ export async function POST(request: NextRequest) {
         }
 
         // 2. Insert rules
-        const ruleRows = pack.rules.map((rule) => ({
-            id: uuid(),
-            policy_id: policyId,
-            rule_id: rule.rule_id,
-            name: rule.name,
-            type: rule.type,
-            description: rule.description ?? null,
-            threshold: rule.threshold,
-            time_window: rule.time_window,
-            severity: rule.severity,
-            conditions: rule.conditions,
-            policy_excerpt: rule.policy_excerpt,
-            policy_section: rule.policy_section,
-            is_active: true,
-        }));
+        const ruleRows = pack.rules.map((rule) => {
+            // Repurpose description to store historical_context for MVP hackathon
+            const enrichedDescription = JSON.stringify({
+                text: rule.description ?? null,
+                historical_context: rule.historical_context ?? null
+            });
+
+            return {
+                id: uuid(),
+                policy_id: policyId,
+                rule_id: rule.rule_id,
+                name: rule.name,
+                type: rule.type,
+                description: enrichedDescription,
+                threshold: rule.threshold,
+                time_window: rule.time_window,
+                severity: rule.severity,
+                conditions: rule.conditions,
+                policy_excerpt: rule.policy_excerpt,
+                policy_section: rule.policy_section,
+                is_active: true,
+            };
+        });
 
         const { error: rulesError } = await supabase
             .from('rules')

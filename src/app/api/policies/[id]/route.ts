@@ -1,5 +1,5 @@
 // ============================================================
-// GET /api/policies/[id] — Get policy with rules
+// GET /api/policies/[id] — Get policy with rules + dirty flag
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -32,6 +32,22 @@ export async function GET(
             .eq('policy_id', id)
             .order('created_at', { ascending: true });
 
+        // Dirty detection: compare policy.updated_at against latest completed scan
+        let dirty = false;
+        const { data: latestScan } = await supabase
+            .from('scans')
+            .select('completed_at')
+            .eq('policy_id', id)
+            .eq('status', 'completed')
+            .order('completed_at', { ascending: false })
+            .limit(1)
+            .single();
+
+        if (latestScan?.completed_at && policy.updated_at) {
+            dirty = new Date(policy.updated_at) > new Date(latestScan.completed_at);
+        }
+        // If no scans exist yet, dirty = false (nothing to rescan against)
+
         return NextResponse.json({
             id: policy.id,
             name: policy.name,
@@ -51,6 +67,8 @@ export async function GET(
                 is_active: r.is_active,
             })),
             created_at: policy.created_at,
+            updated_at: policy.updated_at,
+            dirty,
         });
 
     } catch (err) {
