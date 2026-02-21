@@ -120,6 +120,7 @@ export default function DashboardIndexPage() {
                         <Table>
                             <TableHeader>
                                 <TableRow>
+                                    <TableHead>Audit</TableHead>
                                     <TableHead>Date</TableHead>
                                     <TableHead>Score</TableHead>
                                     <TableHead>Violations</TableHead>
@@ -139,6 +140,9 @@ export default function DashboardIndexPage() {
                                         }}
                                         role="button"
                                     >
+                                        <TableCell className="text-sm font-medium">
+                                            {(scan as any).audit_name || scan.id.slice(0, 8)}
+                                        </TableCell>
                                         <TableCell className="text-sm">
                                             {new Date(scan.created_at).toLocaleDateString('en-US', {
                                                 month: 'short',

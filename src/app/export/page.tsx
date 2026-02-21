@@ -72,13 +72,15 @@ export default function ExportPage() {
                                 >
                                     <div>
                                         <p className="font-medium">
+                                            {scan.audit_name || `Scan ${scan.id.slice(0, 8)}`}
+                                        </p>
+                                        <p className="mt-0.5 text-xs text-muted-foreground">
                                             {new Date(scan.created_at).toLocaleDateString('en-US', {
                                                 month: 'short',
                                                 day: 'numeric',
                                                 year: 'numeric',
                                             })}
-                                        </p>
-                                        <p className="mt-0.5 text-xs text-muted-foreground">
+                                            {' · '}
                                             {scan.violation_count ?? 0} violations · {scan.score ?? 0}%
                                         </p>
                                     </div>
@@ -100,7 +102,7 @@ export default function ExportPage() {
                                 <div className="space-y-6">
                                     <div className="flex flex-wrap items-center gap-3">
                                         <Badge variant="secondary">
-                                            Scan {selectedScan.id.slice(0, 8)}
+                                            {selectedScan.audit_name || `Scan ${selectedScan.id.slice(0, 8)}`}
                                         </Badge>
                                         <Badge variant="outline">
                                             {selectedScan.score ?? 0}% compliance
