@@ -8,13 +8,9 @@ import { ConfirmMappingSchema } from '@/lib/validators';
 import { v4 as uuid } from 'uuid';
 
 // In-memory store for confirmed mappings
-const mappingStore = new Map<string, {
-    upload_id: string;
-    mapping_config: Record<string, string>;
-    temporal_scale: number;
-}>();
-
-export { mappingStore };
+// NOTE: Do not `export` this from a route file (Next.js only allows HTTP method exports).
+// Other routes import from '@/lib/mapping-store' instead.
+import { mappingStore } from '@/lib/mapping-store';
 
 export async function POST(request: NextRequest) {
     try {

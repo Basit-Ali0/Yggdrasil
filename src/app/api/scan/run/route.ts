@@ -10,8 +10,8 @@ import { RunScanSchema } from '@/lib/validators';
 import { RuleExecutor } from '@/lib/engine/rule-executor';
 import { calculateComplianceScore } from '@/lib/engine/scoring';
 import { v4 as uuid } from 'uuid';
-import { uploadStore } from '@/app/api/data/upload/route';
-import { mappingStore } from '@/app/api/data/mapping/confirm/route';
+import { uploadStore } from '@/lib/upload-store';
+import { mappingStore } from '@/lib/mapping-store';
 import { Rule } from '@/lib/types';
 
 export async function POST(request: NextRequest) {

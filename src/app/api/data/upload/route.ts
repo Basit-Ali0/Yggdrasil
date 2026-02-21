@@ -10,11 +10,7 @@ import { detectDataset, getTemporalScale, getDefaultMapping } from '@/lib/engine
 import { geminiGenerateObject } from '@/lib/gemini';
 import { z } from 'zod';
 
-// In-memory store for uploaded CSV data (keyed by upload_id)
-// In production this would be Redis/S3, but for hackathon this works
-const uploadStore = new Map<string, { rows: Record<string, any>[]; headers: string[]; fileName: string }>();
-
-export { uploadStore };
+import { uploadStore } from '@/lib/upload-store';
 
 export async function POST(request: NextRequest) {
     try {
