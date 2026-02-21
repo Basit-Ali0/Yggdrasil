@@ -6,7 +6,23 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseForRequest, getUserIdFromRequest, AuthError } from '@/lib/supabase';
 import { PrebuiltPolicySchema } from '@/lib/validators';
 import { AML_RULES, AML_POLICY_NAME } from '@/lib/policies/aml';
+import { GDPR_RULES, GDPR_POLICY_NAME } from '@/lib/policies/gdpr';
+import { SOC2_RULES, SOC2_POLICY_NAME } from '@/lib/policies/soc2';
 import { v4 as uuid } from 'uuid';
+import type { Rule } from '@/lib/types';
+
+function getPolicyPack(policyType: string): { name: string; rules: Rule[] } {
+    switch (policyType) {
+        case 'aml':
+            return { name: AML_POLICY_NAME, rules: AML_RULES };
+        case 'gdpr':
+            return { name: GDPR_POLICY_NAME, rules: GDPR_RULES };
+        case 'soc2':
+            return { name: SOC2_POLICY_NAME, rules: SOC2_RULES };
+        default:
+            throw new Error(`Unknown policy type: ${policyType}`);
+    }
+}
 
 export async function POST(request: NextRequest) {
     try {
@@ -24,13 +40,7 @@ export async function POST(request: NextRequest) {
         const userId = await getUserIdFromRequest(request);
         const supabase = await getSupabaseForRequest(request);
 
-        if (type !== 'aml') {
-            return NextResponse.json(
-                { error: 'NOT_IMPLEMENTED', message: `Policy type '${type}' is not yet available.` },
-                { status: 400 }
-            );
-        }
-
+        const pack = getPolicyPack(type);
         const policyId = uuid();
 
         const { error: policyError } = await supabase
@@ -38,10 +48,10 @@ export async function POST(request: NextRequest) {
             .insert({
                 id: policyId,
                 user_id: userId,
-                name: AML_POLICY_NAME,
+                name: pack.name,
                 type: 'prebuilt',
-                prebuilt_type: 'aml',
-                rules_count: AML_RULES.length,
+                prebuilt_type: type,
+                rules_count: pack.rules.length,
                 status: 'active',
             });
 
@@ -52,7 +62,7 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        const ruleRows = AML_RULES.map((rule) => ({
+        const ruleRows = pack.rules.map((rule) => ({
             id: uuid(),
             policy_id: policyId,
             rule_id: rule.rule_id,
@@ -82,11 +92,11 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({
             policy: {
                 id: policyId,
-                name: AML_POLICY_NAME,
+                name: pack.name,
                 type: 'prebuilt',
-                prebuilt_type: 'aml',
-                rules_count: AML_RULES.length,
-                rules: AML_RULES,
+                prebuilt_type: type,
+                rules_count: pack.rules.length,
+                rules: pack.rules,
                 created_at: new Date().toISOString(),
             },
         }, { status: 201 });
