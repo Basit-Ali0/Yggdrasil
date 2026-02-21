@@ -25,6 +25,7 @@ export interface UploadDataResponse {
     sample_rows: Record<string, unknown>[];
     detected_dataset: 'IBM_AML' | 'PAYSIM' | 'GENERIC';
     suggested_mapping: Record<string, string>;
+    mapping_confidence: Record<string, number>;
     temporal_scale: number;
     clarification_questions: ClarificationQuestion[];
 }
