@@ -4,7 +4,7 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabase, getUserId } from '@/lib/supabase';
+import { getSupabase, getUserIdFromRequest, AuthError } from '@/lib/supabase';
 import { CreateAuditSchema } from '@/lib/validators';
 import { AML_RULES, AML_POLICY_NAME } from '@/lib/policies/aml';
 import { v4 as uuid } from 'uuid';
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
         }
 
         const { name, policy_type } = parsed.data;
-        const userId = getUserId();
+        const userId = await getUserIdFromRequest(request);
         const supabase = getSupabase();
 
         // Only AML is supported for MVP
@@ -94,6 +94,12 @@ export async function POST(request: NextRequest) {
         }, { status: 201 });
 
     } catch (err) {
+        if (err instanceof AuthError) {
+            return NextResponse.json(
+                { error: 'UNAUTHORIZED', message: err.message },
+                { status: 401 }
+            );
+        }
         console.error('POST /api/audits error:', err);
         return NextResponse.json(
             { error: 'INTERNAL_ERROR', message: 'An unexpected error occurred' },

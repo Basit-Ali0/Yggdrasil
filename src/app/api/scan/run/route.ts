@@ -5,7 +5,7 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabase, getUserId } from '@/lib/supabase';
+import { getSupabase, getUserIdFromRequest, AuthError } from '@/lib/supabase';
 import { RunScanSchema } from '@/lib/validators';
 import { RuleExecutor } from '@/lib/engine/rule-executor';
 import { calculateComplianceScore } from '@/lib/engine/scoring';
@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
         }
 
         const { audit_id, policy_id, upload_id, mapping_id } = parsed.data;
-        const userId = getUserId();
+        const userId = await getUserIdFromRequest(request);
         const supabase = getSupabase();
 
         // 1. Get mapping config
@@ -176,6 +176,12 @@ export async function POST(request: NextRequest) {
         });
 
     } catch (err) {
+        if (err instanceof AuthError) {
+            return NextResponse.json(
+                { error: 'UNAUTHORIZED', message: err.message },
+                { status: 401 }
+            );
+        }
         console.error('POST /api/scan/run error:', err);
         return NextResponse.json(
             { error: 'INTERNAL_ERROR', message: 'An unexpected error occurred' },

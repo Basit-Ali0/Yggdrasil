@@ -3,7 +3,7 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabase, getUserId } from '@/lib/supabase';
+import { getSupabase, getUserIdFromRequest, AuthError } from '@/lib/supabase';
 import { geminiGenerateObject } from '@/lib/gemini';
 import { v4 as uuid } from 'uuid';
 import { z } from 'zod';
@@ -81,7 +81,7 @@ Strict Requirements:
             prompt: `Extract compliance rules from the following policy document:\n\n${pdfText.slice(0, 15000)}`,
         });
 
-        const userId = getUserId();
+        const userId = await getUserIdFromRequest(request);
         const supabase = getSupabase();
 
         // Create policy
@@ -135,6 +135,12 @@ Strict Requirements:
         }, { status: 201 });
 
     } catch (err) {
+        if (err instanceof AuthError) {
+            return NextResponse.json(
+                { error: 'UNAUTHORIZED', message: err.message },
+                { status: 401 }
+            );
+        }
         console.error('POST /api/policies/ingest error:', err);
         return NextResponse.json(
             { error: 'INTERNAL_ERROR', message: 'An unexpected error occurred' },

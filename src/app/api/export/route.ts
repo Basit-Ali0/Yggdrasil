@@ -3,7 +3,7 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabase, getUserId } from '@/lib/supabase';
+import { getSupabase, getUserIdFromRequest, AuthError } from '@/lib/supabase';
 
 export async function GET(request: NextRequest) {
     try {
@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
             const { data: latestScan } = await supabase
                 .from('scans')
                 .select('id')
-                .eq('user_id', getUserId())
+                .eq('user_id', await getUserIdFromRequest(request))
                 .order('created_at', { ascending: false })
                 .limit(1)
                 .single();
@@ -99,6 +99,12 @@ export async function GET(request: NextRequest) {
         });
 
     } catch (err) {
+        if (err instanceof AuthError) {
+            return NextResponse.json(
+                { error: 'UNAUTHORIZED', message: err.message },
+                { status: 401 }
+            );
+        }
         console.error('GET /api/export error:', err);
         return NextResponse.json(
             { error: 'INTERNAL_ERROR', message: 'An unexpected error occurred' },

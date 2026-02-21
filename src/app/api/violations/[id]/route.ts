@@ -5,7 +5,7 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabase, getUserId } from '@/lib/supabase';
+import { getSupabase, getUserIdFromRequest, AuthError } from '@/lib/supabase';
 import { ReviewViolationSchema } from '@/lib/validators';
 import { calculateComplianceScore } from '@/lib/engine/scoring';
 
@@ -77,7 +77,7 @@ export async function PATCH(
             );
         }
 
-        const userId = getUserId();
+        const userId = await getUserIdFromRequest(request);
         const supabase = getSupabase();
 
         // Map "rejected" (CONTRACTS.md) to "false_positive" (schema.md)
@@ -137,6 +137,12 @@ export async function PATCH(
         });
 
     } catch (err) {
+        if (err instanceof AuthError) {
+            return NextResponse.json(
+                { error: 'UNAUTHORIZED', message: err.message },
+                { status: 401 }
+            );
+        }
         console.error('PATCH /api/violations/[id] error:', err);
         return NextResponse.json(
             { error: 'INTERNAL_ERROR', message: 'An unexpected error occurred' },

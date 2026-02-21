@@ -3,12 +3,12 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabase, getUserId } from '@/lib/supabase';
+import { getSupabase, getUserIdFromRequest, AuthError } from '@/lib/supabase';
 
 export async function GET(request: NextRequest) {
     try {
         const supabase = getSupabase();
-        const userId = getUserId();
+        const userId = await getUserIdFromRequest(request);
 
         const { data: scans, error } = await supabase
             .from('scans')
@@ -36,6 +36,12 @@ export async function GET(request: NextRequest) {
         });
 
     } catch (err) {
+        if (err instanceof AuthError) {
+            return NextResponse.json(
+                { error: 'UNAUTHORIZED', message: err.message },
+                { status: 401 }
+            );
+        }
         console.error('GET /api/scan/history error:', err);
         return NextResponse.json(
             { error: 'INTERNAL_ERROR', message: 'An unexpected error occurred' },
