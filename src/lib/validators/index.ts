@@ -40,7 +40,7 @@ export const RunScanSchema = z.object({
 
 // ── PATCH /api/violations/:id ────────────────────────────────
 export const ReviewViolationSchema = z.object({
-    status: z.enum(['approved', 'rejected']),
+    status: z.enum(['approved', 'false_positive']),
     review_note: z.string().optional(),
 });
 

@@ -91,7 +91,7 @@ export const useViolationStore = create<ViolationState>((set, get) => ({
             set({
                 activeViolation: {
                     ...prevViolation,
-                    status: req.status === 'approved' ? 'approved' : 'false_positive',
+                    status: req.status,
                     review_note: req.review_note ?? null,
                 },
             });

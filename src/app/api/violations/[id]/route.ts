@@ -41,7 +41,7 @@ export async function GET(
         // Extract historical context from the rule description
         const rules = (violation.scan as any)?.policy?.rules as any[];
         const matchingRule = rules?.find(r => r.rule_id === violation.rule_id);
-        
+
         let historicalContext = null;
         let fullArticleText = null;
 
@@ -49,10 +49,10 @@ export async function GET(
             try {
                 const parsed = JSON.parse(matchingRule.description);
                 historicalContext = parsed.historical_context;
-                
+
                 if (historicalContext?.article_reference) {
                     const articleNum = historicalContext.article_reference;
-                    
+
                     // Fetch live data from Kaggle CSVs via KnowledgeService
                     const [liveBenchmark, articleData] = await Promise.all([
                         knowledgeService.getBenchmarkData(articleNum),
@@ -130,8 +130,8 @@ export async function PATCH(
         const userId = await getUserIdFromRequest(request);
         const supabase = await getSupabaseForRequest(request);
 
-        // Map "rejected" (CONTRACTS.md) to "false_positive" (schema.md)
-        const dbStatus = parsed.data.status === 'rejected' ? 'false_positive' : parsed.data.status;
+        // Status is now unified: both frontend and DB use 'approved' | 'false_positive'
+        const dbStatus = parsed.data.status;
 
         const { data: updated, error: updateError } = await supabase
             .from('violations')
@@ -180,7 +180,7 @@ export async function PATCH(
             success: true,
             violation: {
                 id: updated.id,
-                status: parsed.data.status, // Return what client sent, not DB value
+                status: updated.status,
                 reviewed_at: updated.reviewed_at,
             },
             updated_score: newScore,
