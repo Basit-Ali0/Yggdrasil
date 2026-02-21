@@ -4,11 +4,11 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabase } from '@/lib/supabase';
+import { getSupabaseForRequest } from '@/lib/supabase';
 
 export async function GET(request: NextRequest) {
     try {
-        const supabase = getSupabase();
+        const supabase = await getSupabaseForRequest(request);
         const { searchParams } = new URL(request.url);
         const scanId = searchParams.get('scan_id');
 

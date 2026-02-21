@@ -3,7 +3,7 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabase } from '@/lib/supabase';
+import { getSupabaseForRequest } from '@/lib/supabase';
 import { ValidateSchema } from '@/lib/validators';
 import { computeMetrics } from '@/lib/engine/validation';
 
@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
         }
 
         const { scan_id, dataset, label_column } = parsed.data;
-        const supabase = getSupabase();
+        const supabase = await getSupabaseForRequest(request);
 
         // Get violations for this scan
         const { data: violations } = await supabase

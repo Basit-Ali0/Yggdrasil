@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Papa from 'papaparse';
 import { v4 as uuid } from 'uuid';
-import { detectDataset, getTemporalScale, getDefaultMapping } from '@/lib/engine/schema-adapter';
+import { detectDataset, getTemporalScale, getDefaultMapping, getDefaultMappingWithConfidence } from '@/lib/engine/schema-adapter';
 import { geminiGenerateObject } from '@/lib/gemini';
 import { z } from 'zod';
 
@@ -47,6 +47,13 @@ export async function POST(request: NextRequest) {
         const temporalScale = getTemporalScale(detectedDataset);
         const suggestedMapping = getDefaultMapping(detectedDataset);
 
+        // Get confidence values — 100% for known datasets, Gemini for GENERIC
+        let mappingConfidence: Record<string, number> = {};
+        const withConfidence = getDefaultMappingWithConfidence(detectedDataset);
+        for (const [field, { confidence }] of Object.entries(withConfidence)) {
+            mappingConfidence[field] = confidence;
+        }
+
         // If no default mapping, try Gemini for column mapping (graceful: empty on failure)
         let finalMapping = suggestedMapping;
         if (Object.keys(suggestedMapping).length === 0) {
@@ -69,8 +76,10 @@ export async function POST(request: NextRequest) {
                 });
 
                 finalMapping = {};
+                mappingConfidence = {};
                 for (const m of result.mappings) {
                     finalMapping[m.standard_field] = m.csv_header;
+                    mappingConfidence[m.standard_field] = Math.round(m.confidence * 100);
                 }
             } catch {
                 // Gemini failed — continue with empty mapping, user will configure manually
@@ -96,6 +105,7 @@ export async function POST(request: NextRequest) {
             sample_rows: rows.slice(0, 5),
             detected_dataset: detectedDataset,
             suggested_mapping: finalMapping,
+            mapping_confidence: mappingConfidence,
             temporal_scale: temporalScale,
             clarification_questions: clarificationQuestions,
         });

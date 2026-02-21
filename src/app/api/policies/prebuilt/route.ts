@@ -3,7 +3,7 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabase, getUserIdFromRequest, AuthError } from '@/lib/supabase';
+import { getSupabaseForRequest, getUserIdFromRequest, AuthError } from '@/lib/supabase';
 import { PrebuiltPolicySchema } from '@/lib/validators';
 import { AML_RULES, AML_POLICY_NAME } from '@/lib/policies/aml';
 import { v4 as uuid } from 'uuid';
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
 
         const { type } = parsed.data;
         const userId = await getUserIdFromRequest(request);
-        const supabase = getSupabase();
+        const supabase = await getSupabaseForRequest(request);
 
         if (type !== 'aml') {
             return NextResponse.json(

@@ -3,11 +3,11 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabase, getUserIdFromRequest, AuthError } from '@/lib/supabase';
+import { getSupabaseForRequest, getUserIdFromRequest, AuthError } from '@/lib/supabase';
 
 export async function GET(request: NextRequest) {
     try {
-        const supabase = getSupabase();
+        const supabase = await getSupabaseForRequest(request);
         const userId = await getUserIdFromRequest(request);
 
         const { data: scans, error } = await supabase

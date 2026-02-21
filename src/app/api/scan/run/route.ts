@@ -5,7 +5,7 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabase, getUserIdFromRequest, AuthError } from '@/lib/supabase';
+import { getSupabaseForRequest, getUserIdFromRequest, AuthError } from '@/lib/supabase';
 import { RunScanSchema } from '@/lib/validators';
 import { RuleExecutor } from '@/lib/engine/rule-executor';
 import { calculateComplianceScore } from '@/lib/engine/scoring';
@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
 
         const { audit_id, policy_id, upload_id, mapping_id } = parsed.data;
         const userId = await getUserIdFromRequest(request);
-        const supabase = getSupabase();
+        const supabase = await getSupabaseForRequest(request);
 
         // 1. Get mapping config
         const mapping = mappingStore.get(mapping_id);

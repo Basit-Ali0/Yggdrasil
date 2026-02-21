@@ -5,7 +5,7 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabase, getUserIdFromRequest, AuthError } from '@/lib/supabase';
+import { getSupabaseForRequest, getUserIdFromRequest, AuthError } from '@/lib/supabase';
 import { ReviewViolationSchema } from '@/lib/validators';
 import { calculateComplianceScore } from '@/lib/engine/scoring';
 
@@ -15,7 +15,7 @@ export async function GET(
 ) {
     try {
         const { id } = await params;
-        const supabase = getSupabase();
+        const supabase = await getSupabaseForRequest(request);
 
         const { data: violation, error } = await supabase
             .from('violations')
@@ -78,7 +78,7 @@ export async function PATCH(
         }
 
         const userId = await getUserIdFromRequest(request);
-        const supabase = getSupabase();
+        const supabase = await getSupabaseForRequest(request);
 
         // Map "rejected" (CONTRACTS.md) to "false_positive" (schema.md)
         const dbStatus = parsed.data.status === 'rejected' ? 'false_positive' : parsed.data.status;

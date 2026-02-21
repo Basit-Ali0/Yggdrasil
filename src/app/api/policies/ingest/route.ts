@@ -3,7 +3,7 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabase, getUserIdFromRequest, AuthError } from '@/lib/supabase';
+import { getSupabaseForRequest, getUserIdFromRequest, AuthError } from '@/lib/supabase';
 import { geminiGenerateObject } from '@/lib/gemini';
 import { v4 as uuid } from 'uuid';
 import { z } from 'zod';
@@ -82,7 +82,7 @@ Strict Requirements:
         });
 
         const userId = await getUserIdFromRequest(request);
-        const supabase = getSupabase();
+        const supabase = await getSupabaseForRequest(request);
 
         // Create policy
         const policyId = uuid();

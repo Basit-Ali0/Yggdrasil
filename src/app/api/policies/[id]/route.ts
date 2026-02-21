@@ -3,7 +3,7 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabase } from '@/lib/supabase';
+import { getSupabaseForRequest } from '@/lib/supabase';
 
 export async function GET(
     request: NextRequest,
@@ -11,7 +11,7 @@ export async function GET(
 ) {
     try {
         const { id } = await params;
-        const supabase = getSupabase();
+        const supabase = await getSupabaseForRequest(request);
 
         const { data: policy, error: policyError } = await supabase
             .from('policies')

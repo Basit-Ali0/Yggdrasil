@@ -4,7 +4,7 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabase, getUserIdFromRequest, AuthError } from '@/lib/supabase';
+import { getSupabaseForRequest, getUserIdFromRequest, AuthError } from '@/lib/supabase';
 import { CreateAuditSchema } from '@/lib/validators';
 import { AML_RULES, AML_POLICY_NAME } from '@/lib/policies/aml';
 import { v4 as uuid } from 'uuid';
@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
 
         const { name, policy_type } = parsed.data;
         const userId = await getUserIdFromRequest(request);
-        const supabase = getSupabase();
+        const supabase = await getSupabaseForRequest(request);
 
         // Only AML is supported for MVP
         if (policy_type !== 'aml') {

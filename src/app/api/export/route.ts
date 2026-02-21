@@ -3,11 +3,11 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabase, getUserIdFromRequest, AuthError } from '@/lib/supabase';
+import { getSupabaseForRequest, getUserIdFromRequest, AuthError } from '@/lib/supabase';
 
 export async function GET(request: NextRequest) {
     try {
-        const supabase = getSupabase();
+        const supabase = await getSupabaseForRequest(request);
         const { searchParams } = new URL(request.url);
         const scanId = searchParams.get('scan_id');
         const format = searchParams.get('format') ?? 'json';
