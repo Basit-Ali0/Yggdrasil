@@ -86,10 +86,13 @@ Strict Requirements:
 3. If a rule is ambiguous, set requires_clarification: true with clarification_notes.
 4. List any ambiguous sections in the ambiguous_sections array.`;
 
+        // Gemini 2.0 Flash supports ~1M tokens (~4M chars), so 500K chars is safe
+        console.log(`[ingest] PDF text extracted: ${pdfText.length} chars`);
+
         const result = await geminiGenerateObject({
             schema: ExtractionResultSchema,
             system: systemPrompt,
-            prompt: `Extract compliance rules from the following policy document:\n\n${pdfText.slice(0, 15000)}`,
+            prompt: `Extract compliance rules from the following policy document:\n\n${pdfText.slice(0, 500000)}`,
         });
 
         const userId = await getUserIdFromRequest(request);

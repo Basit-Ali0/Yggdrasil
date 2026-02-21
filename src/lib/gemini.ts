@@ -75,7 +75,7 @@ const geminiBreaker = new CircuitBreaker();
 
 // ── Gemini generateObject wrapper ────────────────────────────
 
-const MODEL_ID = 'gemini-2.0-flash';
+const MODEL_ID = 'gemini-2.5-flash';
 
 /**
  * Call Gemini via Vercel AI SDK generateObject with retry + circuit breaker.
