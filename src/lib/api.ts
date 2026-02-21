@@ -1,7 +1,10 @@
 // ============================================================
 // API Client — Yggdrasil
 // Typed fetch wrapper with error handling + retry
+// Sends Supabase auth token on every request
 // ============================================================
+
+import { getSupabaseBrowser } from '@/lib/supabase-browser';
 
 interface ApiError {
     error: string;
@@ -50,17 +53,30 @@ async function fetchWithRetry(
     throw new Error('Exhausted retries');
 }
 
-function getHeaders(): HeadersInit {
-    return {
+async function getHeaders(): Promise<HeadersInit> {
+    const headers: Record<string, string> = {
         'Content-Type': 'application/json',
     };
+
+    // Attach Supabase auth token if available
+    try {
+        const supabase = getSupabaseBrowser();
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.access_token) {
+            headers['Authorization'] = `Bearer ${session.access_token}`;
+        }
+    } catch {
+        // No auth available — request will rely on demo mode fallback
+    }
+
+    return headers;
 }
 
 export const api = {
     async get<T>(path: string): Promise<T> {
         const response = await fetchWithRetry(`/api${path}`, {
             method: 'GET',
-            headers: getHeaders(),
+            headers: await getHeaders(),
             credentials: 'same-origin',
         });
 
@@ -80,7 +96,7 @@ export const api = {
     async post<T>(path: string, body?: unknown): Promise<T> {
         const response = await fetchWithRetry(`/api${path}`, {
             method: 'POST',
-            headers: getHeaders(),
+            headers: await getHeaders(),
             credentials: 'same-origin',
             body: body ? JSON.stringify(body) : undefined,
         });
@@ -101,7 +117,7 @@ export const api = {
     async patch<T>(path: string, body: unknown): Promise<T> {
         const response = await fetchWithRetry(`/api${path}`, {
             method: 'PATCH',
-            headers: getHeaders(),
+            headers: await getHeaders(),
             credentials: 'same-origin',
             body: JSON.stringify(body),
         });
@@ -121,8 +137,19 @@ export const api = {
 
     async upload<T>(path: string, formData: FormData): Promise<T> {
         // Don't set Content-Type — browser handles multipart boundary
+        // But DO send the auth token
+        const authHeaders: Record<string, string> = {};
+        try {
+            const supabase = getSupabaseBrowser();
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.access_token) {
+                authHeaders['Authorization'] = `Bearer ${session.access_token}`;
+            }
+        } catch { /* no auth */ }
+
         const response = await fetchWithRetry(`/api${path}`, {
             method: 'POST',
+            headers: authHeaders,
             credentials: 'same-origin',
             body: formData,
         });
