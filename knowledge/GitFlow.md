@@ -1,6 +1,6 @@
-# Git Flow: PolicyGuard AI
+# Git Flow: Yggdrasil
 
-**Project:** PolicyGuard AI
+**Project:** Yggdrasil
 **Team Size:** 2 developers
 
 ---

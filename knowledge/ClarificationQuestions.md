@@ -1,10 +1,10 @@
 # User Story: Clarification Questions
 
-> **⚠️ DEPRECATED:** User stories have been merged into [UserStories-PolicyGuard-AI.md](./UserStories-PolicyGuard-AI.md). Technical prompts are in [LLMSystemPrompts.md](./LLMSystemPrompts.md).
+> **⚠️ DEPRECATED:** User stories have been merged into [UserStories-Yggdrasil.md](./UserStories-Yggdrasil.md). Technical prompts are in [LLMSystemPrompts.md](./LLMSystemPrompts.md).
 >
 > **Reason:** User stories consolidated into UserStories doc. Technical content in LLMSystemPrompts.
 
-**Project:** PolicyGuard AI  
+**Project:** Yggdrasil  
 **Feature:** Clarification Questions for Ambiguous Policy Language  
 **Status:** Ready for Implementation  
 
@@ -287,7 +287,7 @@ See [LLMSystemPrompts.md](./LLMSystemPrompts.md) for detailed system prompts and
 
 ## Related Documentation
 
-- [API-Specification-PolicyGuard-AI.md](./API-Specification-PolicyGuard-AI.md)
+- [API-Specification-Yggdrasil.md](./API-Specification-Yggdrasil.md)
 - [LLMSystemPrompts.md](./LLMSystemPrompts.md)
 - [Integrations.md](./Integrations.md)
 - [PeriodicMonitoring.md](./PeriodicMonitoring.md)

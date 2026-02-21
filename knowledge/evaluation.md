@@ -1,4 +1,4 @@
-# Ground Truth Evaluation Plan: PolicyGuard AI
+# Ground Truth Evaluation Plan: Yggdrasil
 
 > **NOTE FOR LLMs:** If you need a condensed overview of this project, read [gist.md](../gist.md).
 

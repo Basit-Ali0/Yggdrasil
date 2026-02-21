@@ -1,4 +1,4 @@
-# Documentation Guide: PolicyGuard AI
+# Documentation Guide: Yggdrasil
 
 **Purpose:** Guidelines for writing and maintaining documentation  
 
@@ -20,9 +20,9 @@ This project uses a **lean documentation approach**. The goal is maximum clarity
 |---------------|---------------|
 | Project overview | [gist.md](../gist.md) |
 | Data source integrations | [Integrations.md](./Integrations.md) |
-| User stories | [UserStories-PolicyGuard-AI.md](./UserStories-PolicyGuard-AI.md) |
-| API specs | [API-Specification-PolicyGuard-AI.md](./API-Specification-PolicyGuard-AI.md) |
-| Implementation timeline | [WorkSplit-PolicyGuard-AI.md](./WorkSplit-PolicyGuard-AI.md) |
+| User stories | [UserStories-Yggdrasil.md](./UserStories-Yggdrasil.md) |
+| API specs | [API-Specification-Yggdrasil.md](./API-Specification-Yggdrasil.md) |
+| Implementation timeline | [WorkSplit-Yggdrasil.md](./WorkSplit-Yggdrasil.md) |
 | Architecture | [meta/Architecture.md](./meta/Architecture.md) |
 
 ### Decision Tree: Do You Need a New Doc?
@@ -61,7 +61,7 @@ At the end or near the top, add:
 ```markdown
 **Related Docs:**
 - [gist.md](../gist.md) - Condensed overview
-- [WorkSplit-PolicyGuard-AI.md](./WorkSplit-PolicyGuard-AI.md) - Timeline
+- [WorkSplit-Yggdrasil.md](./WorkSplit-Yggdrasil.md) - Timeline
 - [Integrations.md](./Integrations.md) - (if applicable)
 ```
 
@@ -104,7 +104,7 @@ Every time you mention something that has its own doc, link to it:
 
 ```markdown
 - See [Integrations.md](./Integrations.md) for CSV/JSON/Airtable setup
-- Rule schema defined in [PRFAQ-PolicyGuard-AI.md](./PRFAQ-PolicyGuard-AI.md)
+- Rule schema defined in [PRFAQ-Yggdrasil.md](./PRFAQ-Yggdrasil.md)
 ```
 
 ### Keep gist.md Updated

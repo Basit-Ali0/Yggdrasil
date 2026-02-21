@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Inter, Playfair_Display, JetBrains_Mono } from 'next/font/google';
+import { Inter, Libre_Baskerville, JetBrains_Mono } from 'next/font/google';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { AuthProvider } from '@/components/providers/auth-provider';
@@ -11,8 +11,9 @@ const inter = Inter({
     display: 'swap',
 });
 
-const playfair = Playfair_Display({
+const libreBaskerville = Libre_Baskerville({
     subsets: ['latin'],
+    weight: ['400', '700'],
     variable: '--font-display',
     display: 'swap',
 });
@@ -38,7 +39,7 @@ export default function RootLayout({
     return (
         <html
             lang="en"
-            className={`${inter.variable} ${playfair.variable} ${jetbrains.variable}`}
+            className={`${inter.variable} ${libreBaskerville.variable} ${jetbrains.variable}`}
             suppressHydrationWarning
         >
             <body className="min-h-screen font-sans antialiased">

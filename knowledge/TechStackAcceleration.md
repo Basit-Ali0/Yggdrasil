@@ -1,6 +1,6 @@
 # Tech Stack Acceleration Opportunities
 
-**Project:** PolicyGuard AI  
+**Project:** Yggdrasil  
 **Purpose:** Document recommended packages and implementation acceleration strategies  
 **Status:** Ready for Implementation  
 
@@ -226,8 +226,8 @@ npx shadcn@latest add button card table badge dialog input select toast skeleton
 
 ```bash
 # Initialize Next.js
-npx create-next-app@latest policyguard-ai --typescript --tailwind --eslint
-cd policyguard-ai
+npx create-next-app@latest yggdrasil --typescript --tailwind --eslint
+cd yggdrasil
 
 # Install core packages
 npm install zod @vercel/ai @google/generative-ai unpdf

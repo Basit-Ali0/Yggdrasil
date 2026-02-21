@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseForRequest, getUserIdFromRequest, AuthError } from '@/lib/supabase';
 import { ReviewViolationSchema } from '@/lib/validators';
 import { calculateComplianceScore } from '@/lib/engine/scoring';
+import { knowledgeService } from '@/lib/services/knowledge-service';
 
 export async function GET(
     request: NextRequest,
@@ -19,7 +20,14 @@ export async function GET(
 
         const { data: violation, error } = await supabase
             .from('violations')
-            .select('*')
+            .select(`
+                *,
+                scan:scans(
+                    policy:policies(
+                        rules(rule_id, description)
+                    )
+                )
+            `)
             .eq('id', id)
             .single();
 
@@ -28,6 +36,46 @@ export async function GET(
                 { error: 'NOT_FOUND', message: 'Violation not found' },
                 { status: 404 }
             );
+        }
+
+        // Extract historical context from the rule description
+        const rules = (violation.scan as any)?.policy?.rules as any[];
+        const matchingRule = rules?.find(r => r.rule_id === violation.rule_id);
+        
+        let historicalContext = null;
+        let fullArticleText = null;
+
+        if (matchingRule?.description) {
+            try {
+                const parsed = JSON.parse(matchingRule.description);
+                historicalContext = parsed.historical_context;
+                
+                if (historicalContext?.article_reference) {
+                    const articleNum = historicalContext.article_reference;
+                    
+                    // Fetch live data from Kaggle CSVs via KnowledgeService
+                    const [liveBenchmark, articleData] = await Promise.all([
+                        knowledgeService.getBenchmarkData(articleNum),
+                        knowledgeService.getArticleText(articleNum)
+                    ]);
+
+                    if (liveBenchmark) {
+                        historicalContext = {
+                            ...historicalContext,
+                            avg_fine: `€${(liveBenchmark.avgFine / 1000).toFixed(1)}k (Live Kaggle Data)`,
+                            breach_example: liveBenchmark.sampleSummary,
+                            total_cases: liveBenchmark.count,
+                            max_fine: `€${(liveBenchmark.maxFine / 1000).toFixed(1)}k`
+                        };
+                    }
+
+                    if (articleData && articleData.length > 0) {
+                        fullArticleText = articleData;
+                    }
+                }
+            } catch (e) {
+                // Fallback if not JSON
+            }
         }
 
         // Return per CONTRACTS.md Screen 8
@@ -50,6 +98,8 @@ export async function GET(
             review_note: violation.review_note,
             reviewed_at: violation.reviewed_at,
             rule_accuracy: null, // Populated by /api/validate
+            historical_context: historicalContext,
+            full_article_text: fullArticleText
         });
 
     } catch (err) {

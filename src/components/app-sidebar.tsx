@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/stores/auth-store';
 import { Button } from '@/components/ui/button';
@@ -34,9 +35,9 @@ export function AppSidebar() {
     };
 
     return (
-        <aside className="flex h-screen w-64 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
+        <aside className="flex h-full w-64 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
             {/* Logo */}
-            <div className="flex items-center gap-3 px-5 py-5">
+            <Link href="/" className="flex items-center gap-3 px-5 py-5 transition-opacity hover:opacity-80">
                 <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-sidebar-primary">
                     <Shield className="h-5 w-5 text-sidebar-primary-foreground" />
                 </div>
@@ -44,12 +45,12 @@ export function AppSidebar() {
                     <h1 className="text-sm font-semibold text-sidebar-foreground">Yggdrasil</h1>
                     <p className="text-xs text-sidebar-foreground/60">Compliance Engine</p>
                 </div>
-            </div>
+            </Link>
 
             <Separator className="bg-sidebar-border" />
 
             {/* Navigation */}
-            <nav className="flex-1 space-y-1 px-3 py-4">
+            <nav className="flex-1 overflow-y-auto space-y-1 px-3 py-4">
                 {navItems.map((item) => {
                     const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
                     return (

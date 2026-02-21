@@ -89,6 +89,8 @@ export async function POST(request: NextRequest) {
             file_name: upload.fileName,
             record_count: upload.rows.length,
             status: 'running',
+            upload_id,
+            mapping_id,
         };
 
         // Try with audit name first; fall back without it if column doesn't exist yet

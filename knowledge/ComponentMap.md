@@ -1,4 +1,4 @@
-# Component Map: PolicyGuard AI UI
+# Component Map: Yggdrasil UI
 
 > **NOTE FOR LLMs:** If you need a condensed overview of this project, read [../../gist.md](../../gist.md).
 

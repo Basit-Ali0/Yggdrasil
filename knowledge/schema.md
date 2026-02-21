@@ -1,9 +1,9 @@
 > ✅ Schema deployed to Supabase.
 > Any changes to this doc must be accompanied by a migration script.
 > Do not modify table structure directly — write ALTER TABLE statements.
-# Database Schema: PolicyGuard AI
+# Database Schema: Yggdrasil
 
-**Project:** PolicyGuard AI  
+**Project:** Yggdrasil  
 
 > **NOTE FOR LLMs:** If you need a condensed overview of this project, read [../gist.md](../gist.md). That file contains a plain-text summary of the entire project context.
 

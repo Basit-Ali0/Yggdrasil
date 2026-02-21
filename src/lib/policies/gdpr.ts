@@ -1,11 +1,84 @@
 // ============================================================
-// GDPR Prebuilt Policy — 10 rules from knowledge/gdpr.json
+// GDPR Prebuilt Policy — Categorized Blueprint (14 Key Issues)
 // ============================================================
 
-import { Rule } from '../types';
+import { Rule, PolicyCategory } from '../types';
 
 export const GDPR_POLICY_NAME = 'GDPR Compliance Pack';
 export const GDPR_POLICY_TYPE = 'gdpr';
+
+export const GDPR_CATEGORIES: PolicyCategory[] = [
+    {
+        id: 'consent',
+        name: 'Consent',
+        description: 'Conditions for consent, child consent, and withdrawal of consent.',
+    },
+    {
+        id: 'dpo',
+        name: 'Data Protection Officer',
+        description: 'Designation, position, and tasks of the DPO.',
+    },
+    {
+        id: 'marketing',
+        name: 'Email Marketing',
+        description: 'Opt-out mechanisms and lawfulness of marketing communications.',
+    },
+    {
+        id: 'encryption',
+        name: 'Encryption',
+        description: 'Security of processing and encryption of personal data.',
+    },
+    {
+        id: 'fines',
+        name: 'Fines / Penalties',
+        description: 'Administrative fines and penalties for non-compliance.',
+    },
+    {
+        id: 'personal_data',
+        name: 'Personal Data',
+        description: 'Definition and processing of personal and special category data.',
+    },
+    {
+        id: 'privacy_design',
+        name: 'Privacy by Design',
+        description: 'Data protection by design and by default.',
+    },
+    {
+        id: 'pia',
+        name: 'Privacy Impact Assessment',
+        description: 'Data protection impact assessments (DPIA) and prior consultation.',
+    },
+    {
+        id: 'processing',
+        name: 'Processing',
+        description: 'Principles, lawfulness, and conditions of processing.',
+    },
+    {
+        id: 'ropa',
+        name: 'Records of Processing Activities',
+        description: 'Maintenance of records of processing activities (ROPA).',
+    },
+    {
+        id: 'access',
+        name: 'Right of Access',
+        description: 'Right of access by the data subject and information to be provided.',
+    },
+    {
+        id: 'forgotten',
+        name: 'Right to be Forgotten',
+        description: 'Right to erasure and restriction of processing.',
+    },
+    {
+        id: 'informed',
+        name: 'Right to be Informed',
+        description: 'Transparency and information provided to data subjects.',
+    },
+    {
+        id: 'third_countries',
+        name: 'Third Countries',
+        description: 'Transfers of personal data to third countries or international organizations.',
+    },
+];
 
 export const GDPR_RULES: Rule[] = [
     {
@@ -16,57 +89,73 @@ export const GDPR_RULES: Rule[] = [
         threshold: null,
         time_window: null,
         conditions: { field: 'created_at', operator: 'exists', value: null },
-        policy_excerpt:
-            'Personal data must not be retained beyond necessary period — checks for expired data retention.',
+        policy_excerpt: 'Personal data must not be retained beyond necessary period.',
         policy_section: 'Article 5(1)(e) — Storage Limitation',
         is_active: true,
-        description:
-            'Implement automated data purge for records exceeding retention period defined in your data retention policy.',
+        category: 'forgotten',
+        description: 'Implement automated data purge for records exceeding retention period.',
+        historical_context: {
+            avg_fine: '€14.5M (Average for systemic retention failure)',
+            breach_example: 'Real estate company fined for storing tenant data indefinitely.',
+            article_reference: 'Article 5',
+        },
     },
     {
         rule_id: 'GDPR-002',
         name: 'Consent Status Validation',
         type: 'consent',
-        severity: 'HIGH',
+        severity: 'CRITICAL',
         threshold: null,
         time_window: null,
         conditions: { field: 'consent_status', operator: 'equals', value: 'pending' },
-        policy_excerpt:
-            'Processing requires valid consent — checks for consent records with missing or expired consent.',
+        policy_excerpt: 'Processing requires valid consent.',
         policy_section: 'Article 6(1)(a) — Lawfulness of Processing',
         is_active: true,
-        description:
-            'Obtain valid consent from data subjects before processing their personal data.',
+        category: 'consent',
+        description: 'Obtain valid consent from data subjects before processing.',
+        historical_context: {
+            avg_fine: '€50M (Google case for lack of transparency/consent)',
+            breach_example: 'Ad-tech firm processing location data without clear opt-in.',
+            article_reference: 'Article 6',
+        },
     },
     {
         rule_id: 'GDPR-003',
         name: 'At-Rest Encryption Requirement',
         type: 'encryption',
-        severity: 'HIGH',
+        severity: 'CRITICAL',
         threshold: null,
         time_window: null,
         conditions: { field: 'encrypted', operator: 'equals', value: false },
-        policy_excerpt:
-            'Personal data must be encrypted at rest — checks for unencrypted PII fields.',
+        policy_excerpt: 'Personal data must be encrypted at rest.',
         policy_section: 'Article 32 — Security of Processing',
         is_active: true,
-        description:
-            'Enable encryption at rest for all tables containing personal data.',
+        category: 'encryption',
+        description: 'Enable encryption at rest for all tables containing personal data.',
+        historical_context: {
+            avg_fine: '€18M (British Airways breach — lack of security measures)',
+            breach_example: 'Hospital database leaked patient records because PII was stored in plain text.',
+            article_reference: 'Article 32',
+        },
     },
     {
         rule_id: 'GDPR-004',
         name: 'Special Category Data Protection',
         type: 'prohibited',
-        severity: 'HIGH',
+        severity: 'CRITICAL',
         threshold: null,
         time_window: null,
         conditions: { field: 'data_category', operator: 'contains', value: 'special_category' },
-        policy_excerpt:
-            'Special category data (health, biometrics) requires explicit consent and additional protections.',
+        policy_excerpt: 'Special category data requires explicit consent.',
         policy_section: 'Article 9 — Processing of Special Categories',
         is_active: true,
-        description:
-            'Ensure explicit consent is obtained and additional security measures are in place for special category data.',
+        category: 'personal_data',
+        description: 'Ensure additional security for health, biometric, or political data.',
+        historical_context: {
+            avg_fine: '€35M (H&M case for processing sensitive employee data)',
+            breach_example: 'Health app sharing biometric data with third parties without specific Art 9 consent.',
+            article_reference: 'Article 9',
+        },
     },
     {
         rule_id: 'GDPR-005',
@@ -76,72 +165,92 @@ export const GDPR_RULES: Rule[] = [
         threshold: null,
         time_window: null,
         conditions: { field: 'is_retrievable', operator: 'equals', value: false },
-        policy_excerpt:
-            'Data subjects have right to access their data — checks for accessibility of personal data.',
+        policy_excerpt: 'Data subjects have right to access their data.',
         policy_section: 'Article 15 — Right of Access',
         is_active: true,
-        description:
-            'Implement data subject access request (DSAR) functionality.',
+        category: 'access',
+        description: 'Implement data subject access request (DSAR) functionality.',
+        historical_context: {
+            avg_fine: '€1M (Amazon — failing to provide full access to data)',
+            breach_example: 'SaaS provider unable to export all user data during access request.',
+            article_reference: 'Article 15',
+        },
     },
     {
         rule_id: 'GDPR-006',
-        name: 'Right to Be Forgotten (Deletion)',
+        name: 'Right to Be Forgotten (Erasure)',
         type: 'retention',
         severity: 'HIGH',
         threshold: null,
         time_window: null,
         conditions: { field: 'deletion_requested', operator: 'equals', value: true },
-        policy_excerpt:
-            'Check for records marked for deletion but not yet erased (right to be forgotten).',
+        policy_excerpt: 'Check for records marked for deletion but not yet erased.',
         policy_section: 'Article 17 — Right to Erasure',
         is_active: true,
-        description:
-            'Permanently erase personal data within 30 days of deletion request.',
+        category: 'forgotten',
+        description: 'Permanently erase personal data within 30 days of request.',
+        historical_context: {
+            avg_fine: '€600k (Google Spain — "Right to be Forgotten" in search results)',
+            breach_example: 'Bank failed to delete marketing profile after user closed account.',
+            article_reference: 'Article 17',
+        },
     },
     {
         rule_id: 'GDPR-007',
-        name: 'Children Data — Parental Consent',
+        name: 'Children Data Protections',
         type: 'consent',
-        severity: 'HIGH',
+        severity: 'CRITICAL',
         threshold: 16,
         time_window: null,
         conditions: { field: 'age', operator: 'less_than', value: 16 },
-        policy_excerpt:
-            'Children\'s data requires parental consent for processing (under 16 years old).',
+        policy_excerpt: 'Children\'s data requires parental consent.',
         policy_section: 'Article 8 — Child\'s Consent',
         is_active: true,
-        description:
-            'Verify parental consent before processing data of minors.',
+        category: 'consent',
+        description: 'Verify parental consent before processing data of minors.',
+        historical_context: {
+            avg_fine: '€345M (TikTok — failing to protect children\'s data)',
+            breach_example: 'Gaming site collecting emails of 12-year-olds without age verification.',
+            article_reference: 'Article 8',
+        },
     },
     {
         rule_id: 'GDPR-008',
-        name: 'Marketing Email Opt-Out Mechanism',
+        name: 'Marketing Opt-Out Mechanism',
         type: 'format',
         severity: 'MEDIUM',
         threshold: null,
         time_window: null,
         conditions: { field: 'marketing_consent', operator: 'equals', value: true },
-        policy_excerpt:
-            'Email communications require opt-out mechanism for marketing.',
+        policy_excerpt: 'Email communications require opt-out mechanism.',
         policy_section: 'Article 21 — Right to Object',
         is_active: true,
-        description:
-            'Implement one-click unsubscribe in all marketing communications.',
+        category: 'marketing',
+        description: 'Implement one-click unsubscribe in all marketing emails.',
+        historical_context: {
+            avg_fine: '€400k (Deliveroo — lack of opt-out in promotional emails)',
+            breach_example: 'E-commerce site ignoring unsubscribes for its weekly newsletter.',
+            article_reference: 'Article 21',
+        },
     },
     {
         rule_id: 'GDPR-009',
         name: 'Lawful Basis Documentation',
         type: 'access',
-        severity: 'MEDIUM',
+        severity: 'HIGH',
         threshold: null,
         time_window: null,
         conditions: { field: 'lawful_basis', operator: 'exists', value: null },
-        policy_excerpt:
-            'All personal data processing must have documented lawful basis.',
+        policy_excerpt: 'All processing must have documented lawful basis.',
         policy_section: 'Article 6 — Lawfulness of Processing',
         is_active: true,
-        description:
-            'Document lawful basis (consent, contract, legal obligation, vital interests, public task, legitimate interests) for all processing.',
+        category: 'processing',
+        description: 'Document the specific legal basis (Consent, Contract, etc.) for each data field.',
+        historical_context: {
+            avg_fine: '€20M (General fine for lack of Art 6 justification)',
+            breach_example: 'Company processing payroll data without defining a legal basis in their ROPA.',
+            article_reference: 'Article 6',
+        },
     },
     {
         rule_id: 'GDPR-010',
@@ -151,11 +260,110 @@ export const GDPR_RULES: Rule[] = [
         threshold: null,
         time_window: null,
         conditions: { field: 'tls_enabled', operator: 'equals', value: false },
-        policy_excerpt:
-            'Personal data in transit must be encrypted — checks for unencrypted transmission.',
+        policy_excerpt: 'Personal data in transit must be encrypted.',
         policy_section: 'Article 32 — Security of Processing',
         is_active: true,
-        description:
-            'Enable TLS 1.2+ for all data transmission.',
+        category: 'encryption',
+        description: 'Enable TLS 1.2+ for all data transmission.',
+        historical_context: {
+            avg_fine: '€10M (Telecom company — lack of encryption for subscriber data packets)',
+            breach_example: 'Web form submitting PII via HTTP instead of HTTPS.',
+            article_reference: 'Article 32',
+        },
+    },
+    {
+        rule_id: 'GDPR-011',
+        name: 'DPO Designation Check',
+        type: 'access',
+        severity: 'MEDIUM',
+        threshold: null,
+        time_window: null,
+        conditions: { field: 'dpo_assigned', operator: 'equals', value: false },
+        policy_excerpt: 'Organizations must designate a DPO in specific cases.',
+        policy_section: 'Article 37 — Designation of the DPO',
+        is_active: true,
+        category: 'dpo',
+        description: 'Ensure a Data Protection Officer is assigned if processing sensitive data at scale.',
+        historical_context: {
+            avg_fine: '€50k (Average for failing to appoint DPO when required)',
+            breach_example: 'Security firm fined for not appointing DPO despite large-scale monitoring.',
+            article_reference: 'Article 37',
+        },
+    },
+    {
+        rule_id: 'GDPR-012',
+        name: 'DPIA Requirement Validation',
+        type: 'access',
+        severity: 'HIGH',
+        threshold: null,
+        time_window: null,
+        conditions: { field: 'dpia_completed', operator: 'equals', value: false },
+        policy_excerpt: 'Impact assessment required for high-risk processing.',
+        policy_section: 'Article 35 — Data Protection Impact Assessment',
+        is_active: true,
+        category: 'pia',
+        description: 'Conduct a DPIA before starting high-risk data processing activities.',
+        historical_context: {
+            avg_fine: '€200k (Failing to conduct DPIA for facial recognition)',
+            breach_example: 'Retailer deploying AI tracking without preliminary impact study.',
+            article_reference: 'Article 35',
+        },
+    },
+    {
+        rule_id: 'GDPR-013',
+        name: 'Records of Processing (ROPA)',
+        type: 'access',
+        severity: 'MEDIUM',
+        threshold: null,
+        time_window: null,
+        conditions: { field: 'ropa_entry_exists', operator: 'equals', value: false },
+        policy_excerpt: 'Maintain a record of processing activities.',
+        policy_section: 'Article 30 — Records of Processing Activities',
+        is_active: true,
+        category: 'ropa',
+        description: 'Keep internal records of all personal data processing activities.',
+        historical_context: {
+            avg_fine: '€30k (Incomplete or missing ROPA)',
+            breach_example: 'Logistics firm unable to provide processing logs during audit.',
+            article_reference: 'Article 30',
+        },
+    },
+    {
+        rule_id: 'GDPR-014',
+        name: 'Privacy by Design Default',
+        type: 'format',
+        severity: 'MEDIUM',
+        threshold: null,
+        time_window: null,
+        conditions: { field: 'privacy_by_default', operator: 'equals', value: false },
+        policy_excerpt: 'Implement data protection by design and default.',
+        policy_section: 'Article 25 — Privacy by Design',
+        is_active: true,
+        category: 'privacy_design',
+        description: 'Ensure systems are configured with maximum privacy settings by default.',
+        historical_context: {
+            avg_fine: '€100k (Software vendor — settings not private by default)',
+            breach_example: 'Social app making profiles public automatically upon registration.',
+            article_reference: 'Article 25',
+        },
+    },
+    {
+        rule_id: 'GDPR-015',
+        name: 'Third Country Transfer Basis',
+        type: 'access',
+        severity: 'CRITICAL',
+        threshold: null,
+        time_window: null,
+        conditions: { field: 'transfer_basis', operator: 'exists', value: null },
+        policy_excerpt: 'Transfers to third countries require legal basis.',
+        policy_section: 'Article 44–49 — Transfers to Third Countries',
+        is_active: true,
+        category: 'third_countries',
+        description: 'Ensure data transfers outside EEA are covered by SCCs or Adequacy Decisions.',
+        historical_context: {
+            avg_fine: '€1.2B (Meta — transferring data to US without valid basis)',
+            breach_example: 'Cloud provider moving backup data to non-compliant region.',
+            article_reference: 'Article 44',
+        },
     },
 ];

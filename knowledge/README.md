@@ -1,4 +1,4 @@
-# PolicyGuard AI — Documentation Index
+# Yggdrasil — Documentation Index
 
 > **NOTE:** Start with [gist.md](../gist.md) for a condensed overview.
 
@@ -9,9 +9,9 @@
 | Priority | Document | Description |
 |----------|----------|-------------|
 | 1 | [gist.md](../gist.md) | Plain-text project overview |
-| 2 | [Feature-PolicyGuard-AI.md](./Feature-PolicyGuard-AI.md) | Full specifications |
+| 2 | [Feature-Yggdrasil.md](./Feature-Yggdrasil.md) | Full specifications |
 | 3 | [TechStackAcceleration.md](./TechStackAcceleration.md) | Recommended packages |
-| 4 | [WorkSplit-PolicyGuard-AI.md](./WorkSplit-PolicyGuard-AI.md) | Implementation timeline |
+| 4 | [WorkSplit-Yggdrasil.md](./WorkSplit-Yggdrasil.md) | Implementation timeline |
 
 ---
 
@@ -20,10 +20,10 @@
 | Document | Description |
 |----------|-------------|
 | [problem-statement.md](./problem-statement.md) | Ground truth requirements |
-| [Feature-PolicyGuard-AI.md](./Feature-PolicyGuard-AI.md) | Product specifications |
+| [Feature-Yggdrasil.md](./Feature-Yggdrasil.md) | Product specifications |
 | [GracefulDegradation.md](./GracefulDegradation.md) | **REQUIRED** - Failure handling patterns |
-| [UserStories-PolicyGuard-AI.md](./UserStories-PolicyGuard-AI.md) | User stories + acceptance criteria |
-| [API-Specification-PolicyGuard-AI.md](./API-Specification-PolicyGuard-AI.md) | API endpoints |
+| [UserStories-Yggdrasil.md](./UserStories-Yggdrasil.md) | User stories + acceptance criteria |
+| [API-Specification-Yggdrasil.md](./API-Specification-Yggdrasil.md) | API endpoints |
 | [Integrations.md](./Integrations.md) | Data source specs |
 | [LLMSystemPrompts.md](./LLMSystemPrompts.md) | LLM prompts + schemas |
 | [meta/FailureModes.md](./meta/FailureModes.md) | **REQUIRED** - Safety & Fallbacks |

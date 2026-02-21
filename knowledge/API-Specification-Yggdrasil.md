@@ -1,4 +1,4 @@
-# API Specification: PolicyGuard AI
+# API Specification: Yggdrasil
 
 **Version:** v1
 **Status:** Ready for Implementation
@@ -7,7 +7,7 @@
 
 **Related Docs:**
 - [Integrations.md](./Integrations.md) - Data source integrations
-- [WorkSplit-PolicyGuard-AI.md](./WorkSplit-PolicyGuard-AI.md) - Implementation timeline
+- [WorkSplit-Yggdrasil.md](./WorkSplit-Yggdrasil.md) - Implementation timeline
 
 ---
 

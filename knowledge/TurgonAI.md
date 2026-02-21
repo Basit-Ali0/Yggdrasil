@@ -1,6 +1,6 @@
-# Turgon AI Integration: PolicyGuard AI
+# Turgon AI Integration: Yggdrasil
 
-**Project:** PolicyGuard AI  
+**Project:** Yggdrasil  
 
 > **NOTE FOR LLMs:** If you need a condensed overview of this project, read [gist.md](../gist.md). That file contains a plain-text summary of the entire project context.
 
@@ -59,7 +59,7 @@ If Turgon AI releases APIs in the future:
 
 ## What to Say in Demo
 
-> "Turgon AI's focus on data governance aligns with our mission. While they operate as a services company without public APIs, PolicyGuard AI demonstrates the kind of automated compliance enforcement that their AI agents could potentially integrate with in the future."
+> "Turgon AI's focus on data governance aligns with our mission. While they operate as a services company without public APIs, Yggdrasil demonstrates the kind of automated compliance enforcement that their AI agents could potentially integrate with in the future."
 
 ---
 
@@ -84,4 +84,4 @@ If you need actual compliance APIs for the product:
 
 > "Our agents take your policy docs and automatically flag issues"
 
-For this hackathon, PolicyGuard AI demonstrates the type of automated compliance enforcement that complements Turgon AI's data governance approach.
+For this hackathon, Yggdrasil demonstrates the type of automated compliance enforcement that complements Turgon AI's data governance approach.

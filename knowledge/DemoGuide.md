@@ -1,6 +1,6 @@
-# Demo & Sample Data: PolicyGuard AI
+# Demo & Sample Data: Yggdrasil
 
-**Project:** PolicyGuard AI
+**Project:** Yggdrasil
 
 ---
 
@@ -32,7 +32,7 @@
   - Expand a violation: "See exactly why it flagged: Amount $15k > $10k policy limit. Every violation points back to the PDF excerpt."
   
 [2:00] Close
-  - "PolicyGuard AI: From Policy to Enforcement in 120 seconds."
+  - "Yggdrasil: From Policy to Enforcement in 120 seconds."
 ```
 
 ### Demo Principles

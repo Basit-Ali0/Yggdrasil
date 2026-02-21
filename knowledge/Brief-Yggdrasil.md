@@ -1,10 +1,10 @@
-# Feature Brief: PolicyGuard AI
+# Feature Brief: Yggdrasil
 
-> **⚠️ DEPRECATED:** This document's content has been merged into [Feature-PolicyGuard-AI.md](./Feature-PolicyGuard-AI.md). Please refer to that document for the latest specifications.
+> **⚠️ DEPRECATED:** This document's content has been merged into [Feature-Yggdrasil.md](./Feature-Yggdrasil.md). Please refer to that document for the latest specifications.
 > 
 > **Reason:** Duplicate content. Core information preserved in Feature doc.
 
-**Feature Name:** PolicyGuard AI — Autonomous Policy-to-Data Compliance Engine
+**Feature Name:** Yggdrasil — Autonomous Policy-to-Data Compliance Engine
 **Status:** Draft
 **Version:** v1
 **Created:** 2026-02-21
@@ -12,8 +12,8 @@
 > **NOTE FOR LLMs:** If you need a condensed overview of this project, read [gist.md](../gist.md). That file contains a plain-text summary of the entire project context.
 
 **Related Docs:**
-- [UserStories-PolicyGuard-AI.md](./UserStories-PolicyGuard-AI.md)
-- [PRFAQ-PolicyGuard-AI.md](./PRFAQ-PolicyGuard-AI.md)
+- [UserStories-Yggdrasil.md](./UserStories-Yggdrasil.md)
+- [PRFAQ-Yggdrasil.md](./PRFAQ-Yggdrasil.md)
 - [Integrations.md](./Integrations.md)
 
 ---
@@ -68,7 +68,7 @@ The user is **anxious and overwhelmed**. They have:
 
 ### Core Concept
 
-PolicyGuard AI converts free-text PDF policy documents into structured, enforceable compliance rules, connects to company databases, automatically detects violations with explainable justifications, and provides human review capabilities with ongoing monitoring.
+Yggdrasil converts free-text PDF policy documents into structured, enforceable compliance rules, connects to company databases, automatically detects violations with explainable justifications, and provides human review capabilities with ongoing monitoring.
 
 ### How It Works
 

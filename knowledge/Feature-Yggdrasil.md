@@ -1,4 +1,4 @@
-# Feature Doc: PolicyGuard AI
+# Feature Doc: Yggdrasil
 
 **Status:** v1 intent (authoritative)
 **Mode:** N/A
@@ -7,7 +7,7 @@
 
 ## 1. One-sentence thesis
 
-PolicyGuard AI is a system that turns unstructured compliance policies into executable database enforcement rules with continuous, explainable monitoring and human oversight.
+Yggdrasil is a system that turns unstructured compliance policies into executable database enforcement rules with continuous, explainable monitoring and human oversight.
 
 ---
 
@@ -98,7 +98,7 @@ The MVP uses Supabase for storage. The architecture supports easy scaling later:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                     PolicyGuard AI Platform                   │
+│                     Yggdrasil Platform                   │
 ├─────────────────────────────────────────────────────────────┤
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐ │
 │  │   Web App   │  │   Mobile    │  │      API            │ │

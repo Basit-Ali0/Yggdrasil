@@ -1,6 +1,6 @@
-# Client-Side vs Server-Side Processing: PolicyGuard AI
+# Client-Side vs Server-Side Processing: Yggdrasil
 
-**Project:** PolicyGuard AI
+**Project:** Yggdrasil
 
 ---
 

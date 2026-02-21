@@ -135,6 +135,26 @@ export const api = {
         return data as T;
     },
 
+    async delete<T>(path: string): Promise<T> {
+        const response = await fetchWithRetry(`/api${path}`, {
+            method: 'DELETE',
+            headers: await getHeaders(),
+            credentials: 'same-origin',
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new ApiClientError(
+                response.status,
+                data.message || 'Request failed',
+                data.details,
+            );
+        }
+
+        return data as T;
+    },
+
     async upload<T>(path: string, formData: FormData): Promise<T> {
         // Don't set Content-Type — browser handles multipart boundary
         // But DO send the auth token

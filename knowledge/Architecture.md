@@ -1,11 +1,11 @@
-# Architecture Overview: PolicyGuard AI
+# Architecture Overview: Yggdrasil
 
-**Project:** PolicyGuard AI
+**Project:** Yggdrasil
 
 > **NOTE FOR LLMs:** If you need a condensed overview of this project, read [../../gist.md](../../gist.md). That file contains a plain-text summary of the entire project context.
 
 **Related Docs:**
-- [WorkSplit-PolicyGuard-AI.md](../WorkSplit-PolicyGuard-AI.md)
+- [WorkSplit-Yggdrasil.md](../WorkSplit-Yggdrasil.md)
 - [Integrations.md](../Integrations.md)
 - [schema.md](../schema.md) - Database schema
 - [execution/RuleEngine.md](../execution/RuleEngine.md) - Execution architecture

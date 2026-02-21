@@ -6,6 +6,12 @@
 
 
 // ── Rule ─────────────────────────────────────────────────────
+export interface PolicyCategory {
+    id: string;
+    name: string;
+    description: string;
+}
+
 export interface Rule {
     rule_id: string;        // "CTR_THRESHOLD"
     name: string;           // "Currency Transaction Report Threshold"
@@ -18,6 +24,12 @@ export interface Rule {
     policy_section: string;
     is_active: boolean;
     description?: string;
+    category?: string;       // Mapping to PolicyCategory.id
+    historical_context?: {
+        avg_fine?: string;
+        breach_example?: string;
+        article_reference?: string;
+    };
 }
 
 export interface RuleCondition {

@@ -1,6 +1,6 @@
-# Work Split: PolicyGuard AI
+# Work Split: Yggdrasil
 
-**Project:** PolicyGuard AI — Autonomous Policy-to-Data Compliance Engine
+**Project:** Yggdrasil — Autonomous Policy-to-Data Compliance Engine
 **Duration:** 24 hours (18 hours per person)
 **Team Size:** 2 developers
 

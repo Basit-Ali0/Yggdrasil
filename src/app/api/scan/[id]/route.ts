@@ -43,6 +43,13 @@ export async function GET(
             created_at: scan.created_at,
             completed_at: scan.completed_at,
             audit_name: scan.audit_name ?? null,
+            // Rescan fields
+            policy_id: scan.policy_id ?? null,
+            upload_id: scan.upload_id ?? null,
+            mapping_id: scan.mapping_id ?? null,
+            audit_id: scan.audit_id ?? null,
+            mapping_config: scan.mapping_config ?? null,
+            temporal_scale: scan.temporal_scale ?? null,
         });
 
     } catch (err) {

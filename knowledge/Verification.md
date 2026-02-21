@@ -3,7 +3,7 @@
 > **NOTE FOR LLMs:** If you need a condensed overview of this project, read [../../gist.md](../../gist.md).
 
 ## 🛡️ Objective
-To provide a deterministic "Ground Truth" for testing the PolicyGuard AI rule engine during the 24-hour sprint. These test cases ensure that the mathematical logic is correct before we run larger datasets like IBM AML or PaySim.
+To provide a deterministic "Ground Truth" for testing the Yggdrasil rule engine during the 24-hour sprint. These test cases ensure that the mathematical logic is correct before we run larger datasets like IBM AML or PaySim.
 
 ---
 

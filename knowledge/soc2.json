@@ -1,7 +1,7 @@
 {
   "policy_id": "SOC2-001",
   "policy_name": "SOC2 Compliance Pack",
-  "provider": "PolicyGuard AI",
+  "provider": "Yggdrasil",
   "description": "Complete SOC2 Trust Services Criteria rules. Covers access controls (CC6), monitoring (CC7), change management (CC8), and confidentiality (C1).",
   "regulation": "SOC2",
   "version": "1.0",

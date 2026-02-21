@@ -1,10 +1,10 @@
-# PRFAQ: PolicyGuard AI
+# PRFAQ: Yggdrasil
 
-> **⚠️ DEPRECATED:** This document's content has been merged into [Feature-PolicyGuard-AI.md](./Feature-PolicyGuard-AI.md). Please refer to that document for the latest specifications.
+> **⚠️ DEPRECATED:** This document's content has been merged into [Feature-Yggdrasil.md](./Feature-Yggdrasil.md). Please refer to that document for the latest specifications.
 >
 > **Reason:** Duplicate content. Core information preserved in Feature doc.
 
-**Feature:** PolicyGuard AI — Autonomous Policy-to-Data Compliance Engine
+**Feature:** Yggdrasil — Autonomous Policy-to-Data Compliance Engine
 **Mode:** N/A
 **Audience:** Engineering (Primary), Product, Design, Judges
 **Status:** v1 — ready for implementation
@@ -13,7 +13,7 @@
 
 **Related Docs:**
 
-- [Brief-PolicyGuard-AI.md](./Brief-PolicyGuard-AI.md)
+- [Brief-Yggdrasil.md](./Brief-Yggdrasil.md)
 - [Integrations.md](./Integrations.md) - (data source integration details)
 - [gist.md](../gist.md) - (condensed project overview)
 
@@ -22,13 +22,13 @@
 
 ## PRESS RELEASE (INTERNAL)
 
-### PolicyGuard AI Launches — The First Autonomous Policy-to-Data Compliance Engine
+### Yggdrasil Launches — The First Autonomous Policy-to-Data Compliance Engine
 
-PolicyGuard AI transforms static PDF policy documents into executable database enforcement rules, enabling continuous, explainable compliance monitoring with human oversight.
+Yggdrasil transforms static PDF policy documents into executable database enforcement rules, enabling continuous, explainable compliance monitoring with human oversight.
 
 **The Problem:** Organizations worldwide spend countless hours manually interpreting policy documents and checking databases for compliance violations. This slow, error-prone process leaves compliance teams overwhelmed and auditors frustrated with point-in-time snapshots instead of continuous monitoring.
 
-**The Solution:** PolicyGuard AI bridges the gap between policy and data. Upload a PDF policy, connect to your database, and receive instant, explainable violation reports. Every finding includes the policy excerpt, data evidence, and risk severity — no black-box answers.
+**The Solution:** Yggdrasil bridges the gap between policy and data. Upload a PDF policy, connect to your database, and receive instant, explainable violation reports. Every finding includes the policy excerpt, data evidence, and risk severity — no black-box answers.
 
 **Key Capabilities:**
 
@@ -38,7 +38,7 @@ PolicyGuard AI transforms static PDF policy documents into executable database e
 - **Continuous Monitoring** — Track new and resolved violations over time
 - **Audit-Ready Export** — Generate structured compliance reports instantly
 
-**Why It Matters:** For startups preparing for GDPR, DPDP, or SOC2 compliance, PolicyGuard AI provides the automated bridge that never existed between what legal writes and what engineers build.
+**Why It Matters:** For startups preparing for GDPR, DPDP, or SOC2 compliance, Yggdrasil provides the automated bridge that never existed between what legal writes and what engineers build.
 
 **Market Validation:** Research shows 70% of companies have severe data quality problems【14】. Bad data "will get you on the front page of WSJ and a call from a regulator"【36】. Existing tools focus on checklists, not policy-to-data enforcement. This solution directly addresses the governance issues practitioners highlight: policy enforcement, auditability, and remediation guidance.
 

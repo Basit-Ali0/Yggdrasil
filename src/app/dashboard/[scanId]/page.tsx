@@ -5,6 +5,8 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useViolationStore } from '@/stores/violation-store';
 import { useScanStore } from '@/stores/scan-store';
+import { usePolicyStore } from '@/stores/policy-store';
+import { api } from '@/lib/api';
 import { StatCard } from '@/components/ui-custom/stat-card';
 import { ScoreGauge } from '@/components/ui-custom/score-gauge';
 import { SeverityBadge } from '@/components/ui-custom/severity-badge';
@@ -13,12 +15,15 @@ import { EmptyState } from '@/components/ui-custom/empty-state';
 import { ExportActions } from '@/components/ui-custom/export-actions';
 import { DashboardSkeleton } from '@/components/ui-custom/loading-skeleton';
 import { EvidenceDrawer } from '@/components/evidence-drawer';
+import { PolicyUpdateSheet } from '@/components/policy-update-sheet';
+import { RescanDialog } from '@/components/rescan-dialog';
+import { PIIDashboardCard } from '@/components/pii-dashboard-card';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ShieldAlert, AlertTriangle, Users, ChevronDown, ArrowRight } from 'lucide-react';
-import type { ViolationCase } from '@/lib/contracts';
+import { ShieldAlert, AlertTriangle, Users, ChevronDown, ArrowRight, Settings2, RefreshCw } from 'lucide-react';
+import type { ViolationCase, ScanStatusResponse } from '@/lib/contracts';
 
 // -- Aggregation types --
 interface AccountEntry {
@@ -120,14 +125,34 @@ export default function DashboardPage() {
         fetchCases, fetchScore, isLoadingCases, error, scoreDetails,
     } = useViolationStore();
     const { currentScan } = useScanStore();
+    const { isDirty, fetchPolicy } = usePolicyStore();
 
     const [selectedViolationId, setSelectedViolationId] = useState<string | null>(null);
     const [drawerOpen, setDrawerOpen] = useState(false);
+    const [policySheetOpen, setPolicySheetOpen] = useState(false);
+    const [rescanDialogOpen, setRescanDialogOpen] = useState(false);
+    const [policyId, setPolicyId] = useState<string | null>(null);
 
     useEffect(() => {
         fetchCases(scanId);
         fetchScore(scanId);
     }, [scanId, fetchCases, fetchScore]);
+
+    // Fetch scan details to get policy_id, then fetch policy for dirty state
+    useEffect(() => {
+        const loadScanDetails = async () => {
+            try {
+                const scan = await api.get<ScanStatusResponse>(`/scan/${scanId}`);
+                if (scan.policy_id) {
+                    setPolicyId(scan.policy_id);
+                    fetchPolicy(scan.policy_id);
+                }
+            } catch {
+                // Non-critical: policy buttons just won't show
+            }
+        };
+        loadScanDetails();
+    }, [scanId, fetchPolicy]);
 
     const aggregation = useMemo(() => buildAggregation(cases), [cases]);
 
@@ -161,13 +186,36 @@ export default function DashboardPage() {
                         Scan results and compliance score for your audit.
                     </p>
                 </div>
-                <ExportActions
-                    scanId={scanId}
-                    complianceScore={complianceScore}
-                    totalViolations={totalViolations}
-                    criticalCount={criticalCount}
-                    highCount={highCount}
-                />
+                <div className="flex items-center gap-2">
+                    {policyId && (
+                        <>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setPolicySheetOpen(true)}
+                            >
+                                <Settings2 className="mr-2 h-4 w-4" />
+                                Update Policies
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setRescanDialogOpen(true)}
+                                disabled={!isDirty}
+                            >
+                                <RefreshCw className="mr-2 h-4 w-4" />
+                                Rescan
+                            </Button>
+                        </>
+                    )}
+                    <ExportActions
+                        scanId={scanId}
+                        complianceScore={complianceScore}
+                        totalViolations={totalViolations}
+                        criticalCount={criticalCount}
+                        highCount={highCount}
+                    />
+                </div>
             </div>
 
             {/* Top Stats Row */}
@@ -193,6 +241,9 @@ export default function DashboardPage() {
                     icon={Users}
                 />
             </div>
+
+            {/* PII Alerts */}
+            <PIIDashboardCard scanId={scanId} />
 
             {/* Aggregated Violations */}
             <Card>
@@ -282,6 +333,25 @@ export default function DashboardPage() {
                 open={drawerOpen}
                 onOpenChange={setDrawerOpen}
             />
+
+            {/* Policy Update Sheet */}
+            {policyId && (
+                <PolicyUpdateSheet
+                    policyId={policyId}
+                    open={policySheetOpen}
+                    onOpenChange={setPolicySheetOpen}
+                />
+            )}
+
+            {/* Rescan Dialog */}
+            {policyId && (
+                <RescanDialog
+                    scanId={scanId}
+                    policyId={policyId}
+                    open={rescanDialogOpen}
+                    onOpenChange={setRescanDialogOpen}
+                />
+            )}
         </div>
     );
 }
