@@ -26,12 +26,9 @@ const navItems = [
 export function AppSidebar() {
     const pathname = usePathname();
     const router = useRouter();
-    const { user, isDemo, signOut } = useAuthStore();
+    const { user, signOut } = useAuthStore();
 
     const handleSignOut = async () => {
-        if (isDemo) {
-            localStorage.removeItem('demo_session');
-        }
         await signOut();
         router.push('/');
     };
@@ -81,11 +78,8 @@ export function AppSidebar() {
                     </div>
                     <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium">
-                            {isDemo ? 'Demo User' : user?.email ?? 'User'}
+                            {user?.email ?? 'User'}
                         </p>
-                        {isDemo && (
-                            <p className="text-xs text-sidebar-foreground/50">Demo Mode</p>
-                        )}
                     </div>
                 </div>
                 <Button

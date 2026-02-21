@@ -1,20 +1,15 @@
 // ============================================================
 // Auth Store — Yggdrasil
-// Real Supabase Auth — no hardcoded user IDs
+// Real Supabase Auth
 // ============================================================
 
 import { create } from 'zustand';
 import { getSupabaseBrowser } from '@/lib/supabase-browser';
 import type { User, Session } from '@supabase/supabase-js';
 
-// Demo account credentials (pre-created in Supabase)
-const DEMO_EMAIL = 'demo@yggdrasil.ai';
-const DEMO_PASSWORD = 'demo-yggdrasil-2024';
-
 interface AuthState {
     user: User | null;
     session: Session | null;
-    isDemo: boolean;
     isLoading: boolean;
     isInitialized: boolean;
     error: string | null;
@@ -24,7 +19,6 @@ interface AuthState {
     signIn: (email: string, password: string) => Promise<void>;
     signUp: (email: string, password: string) => Promise<{ needsConfirmation: boolean }>;
     signOut: () => Promise<void>;
-    enableDemoMode: () => Promise<void>;
     clearError: () => void;
 
     // Computed
@@ -35,7 +29,6 @@ interface AuthState {
 export const useAuthStore = create<AuthState>((set, get) => ({
     user: null,
     session: null,
-    isDemo: false,
     isLoading: true,
     isInitialized: false,
     error: null,
@@ -82,7 +75,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             set({
                 user: data.user,
                 session: data.session,
-                isDemo: false,
                 isLoading: false,
             });
         } catch {
@@ -113,7 +105,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             set({
                 user: data.user,
                 session: data.session,
-                isDemo: false,
                 isLoading: false,
             });
 
@@ -132,70 +123,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             set({
                 user: null,
                 session: null,
-                isDemo: false,
                 isLoading: false,
             });
-            // Clean up demo flag
-            if (typeof window !== 'undefined') {
-                localStorage.removeItem('demo_session');
-            }
         } catch {
             set({ isLoading: false });
-        }
-    },
-
-    enableDemoMode: async () => {
-        // Demo mode = sign in with the pre-created demo account
-        set({ isLoading: true, error: null });
-        try {
-            const supabase = getSupabaseBrowser();
-            const { data, error } = await supabase.auth.signInWithPassword({
-                email: DEMO_EMAIL,
-                password: DEMO_PASSWORD,
-            });
-
-            if (error) {
-                // If demo account doesn't exist yet, try to create it
-                const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-                    email: DEMO_EMAIL,
-                    password: DEMO_PASSWORD,
-                });
-
-                if (signUpError) {
-                    set({
-                        error: `Demo mode unavailable: ${signUpError.message}`,
-                        isLoading: false,
-                        isInitialized: true,
-                    });
-                    return;
-                }
-
-                set({
-                    user: signUpData.user,
-                    session: signUpData.session,
-                    isDemo: true,
-                    isLoading: false,
-                    isInitialized: true,
-                });
-            } else {
-                set({
-                    user: data.user,
-                    session: data.session,
-                    isDemo: true,
-                    isLoading: false,
-                    isInitialized: true,
-                });
-            }
-
-            if (typeof window !== 'undefined') {
-                localStorage.setItem('demo_session', 'true');
-            }
-        } catch {
-            set({
-                error: 'Failed to enable demo mode.',
-                isLoading: false,
-                isInitialized: true,
-            });
         }
     },
 

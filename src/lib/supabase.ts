@@ -1,13 +1,11 @@
 // ============================================================
 // Supabase Server Client — Yggdrasil
-// Supports: cookie auth → Bearer token → demo fallback
+// Supports: cookie auth → Bearer token
 // ============================================================
 
 import { createServerClient } from '@supabase/ssr';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { NextRequest } from 'next/server';
-
-const DEMO_USER_ID = '00000000-0000-0000-0000-000000000001';
 
 let _supabase: SupabaseClient | null = null;
 
@@ -34,13 +32,10 @@ export function getSupabase(): SupabaseClient {
 /**
  * Create an authenticated Supabase client from the request.
  * This client carries the user's JWT so RLS policies (auth.uid() = user_id) work.
- * 
- * In demo mode, uses the service role key to bypass RLS.
  */
 export async function getSupabaseForRequest(request: NextRequest): Promise<SupabaseClient> {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     if (!url || !key) {
         throw new Error('Missing Supabase env vars');
@@ -80,22 +75,15 @@ export async function getSupabaseForRequest(request: NextRequest): Promise<Supab
         // Cookie auth failed
     }
 
-    // Demo mode: use service role key to bypass RLS
-    if (process.env.NEXT_PUBLIC_DEMO_MODE === 'true' && serviceKey) {
-        return createClient(url, serviceKey);
-    }
-
-    // Last resort: return anon client (will fail on RLS-protected tables)
-    return getSupabase();
+    throw new AuthError('Not authenticated — no valid session found');
 }
 
 /**
  * Extract the authenticated user ID from the request.
- * 
- * Tries 3 strategies in order:
+ *
+ * Tries 2 strategies in order:
  * 1. Cookie-based SSR auth (for SSR-rendered pages)
- * 2. Authorization Bearer token (for client-side fetch with localStorage session)
- * 3. Demo mode fallback (NEXT_PUBLIC_DEMO_MODE=true)
+ * 2. Authorization Bearer token (for client-side fetch with session)
  */
 export async function getUserIdFromRequest(request: NextRequest): Promise<string> {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -134,13 +122,8 @@ export async function getUserIdFromRequest(request: NextRequest): Promise<string
                 return user.id;
             }
         } catch {
-            // Token auth failed, try next strategy
+            // Token auth failed
         }
-    }
-
-    // Strategy 3: Demo mode fallback
-    if (process.env.NEXT_PUBLIC_DEMO_MODE === 'true') {
-        return DEMO_USER_ID;
     }
 
     throw new AuthError('Not authenticated');

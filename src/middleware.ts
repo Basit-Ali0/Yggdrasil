@@ -16,7 +16,6 @@ export function middleware(request: NextRequest) {
         return NextResponse.next();
     }
 
-    // Check for demo session in cookie or let client handle auth
     // Client-side auth is handled by the AuthProvider
     // Middleware is a lightweight gate — real auth check happens client-side
     return NextResponse.next();
