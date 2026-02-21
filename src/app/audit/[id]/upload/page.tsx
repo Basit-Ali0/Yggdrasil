@@ -1,26 +1,41 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuditStore } from '@/stores/audit-store';
+import { usePIIStore } from '@/stores/pii-store';
 import { FileDropzone } from '@/components/ui-custom/file-dropzone';
+import { PIIAlertDialog } from '@/components/pii-alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { ArrowRight, Database, FileText, AlertCircle } from 'lucide-react';
+import { ArrowRight, Database, FileText, AlertCircle, Loader2, ShieldAlert } from 'lucide-react';
 
 export default function DataUploadPage() {
     const router = useRouter();
     const params = useParams();
-    const { uploadCSV, uploadData, isUploading, error, clearError } = useAuditStore();
+    const { uploadCSV, uploadData, uploadId, isUploading, error, clearError } = useAuditStore();
+    const { isScanning, piiDetected, scanForPII, reset: resetPII } = usePIIStore();
+    const [piiDialogOpen, setPiiDialogOpen] = useState(false);
+
+    // Auto-open PII dialog when detection completes with findings
+    useEffect(() => {
+        if (piiDetected && !isScanning) {
+            setPiiDialogOpen(true);
+        }
+    }, [piiDetected, isScanning]);
 
     const handleFile = async (file: File) => {
         clearError();
+        resetPII();
         await uploadCSV(file);
-        const currentError = useAuditStore.getState().error;
-        if (!currentError) {
+        const currentState = useAuditStore.getState();
+        if (!currentState.error && currentState.uploadId) {
             toast.success('File uploaded', { description: `${file.name} processed successfully.` });
+            // Fire PII scan in the background (non-blocking)
+            scanForPII(currentState.uploadId);
         }
     };
 
@@ -101,6 +116,24 @@ export default function DataUploadPage() {
                         </Badge>
                     </div>
 
+                    {/* PII Scan Status */}
+                    {isScanning && (
+                        <div className="flex items-center gap-2 rounded-lg border border-muted bg-muted/30 p-3 text-sm text-muted-foreground animate-fade-in-up">
+                            <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                            <span>Checking for PII...</span>
+                        </div>
+                    )}
+
+                    {piiDetected && !isScanning && (
+                        <button
+                            className="flex items-center gap-2 rounded-lg border border-ruby/20 bg-ruby/5 p-3 text-sm text-ruby transition-colors hover:bg-ruby/10 w-full text-left"
+                            onClick={() => setPiiDialogOpen(true)}
+                        >
+                            <ShieldAlert className="h-4 w-4 shrink-0" />
+                            <span>PII detected in your dataset. Click to review findings.</span>
+                        </button>
+                    )}
+
                     {/* Schema Preview */}
                     <Card>
                         <CardHeader className="pb-2">
@@ -145,6 +178,13 @@ export default function DataUploadPage() {
                     </div>
                 </div>
             )}
+
+            {/* PII Alert Dialog */}
+            <PIIAlertDialog
+                open={piiDialogOpen}
+                onOpenChange={setPiiDialogOpen}
+                onProceed={handleContinue}
+            />
         </div>
     );
 }

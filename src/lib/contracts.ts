@@ -9,6 +9,7 @@ import type { Rule, Violation, ClarificationQuestion } from './types';
 export interface CreateAuditRequest {
     name: string;
     policy_type: 'aml' | 'gdpr' | 'soc2';
+    selected_categories?: string[];
 }
 
 export interface CreateAuditResponse {
@@ -68,6 +69,13 @@ export interface ScanStatusResponse {
     created_at: string;
     completed_at: string | null;
     audit_name?: string;
+    // Rescan fields
+    policy_id?: string;
+    upload_id?: string;
+    mapping_id?: string;
+    audit_id?: string;
+    mapping_config?: Record<string, string>;
+    temporal_scale?: number;
 }
 
 // ── Screen 7: GET /api/violations/cases ──────────────────────
@@ -101,6 +109,14 @@ export interface ViolationDetailResponse extends Violation {
         f1: number;
         validated_against: string;
     };
+    historical_context?: {
+        avg_fine?: string;
+        max_fine?: string;
+        breach_example?: string;
+        article_reference?: string;
+        total_cases?: number;
+    };
+    full_article_text?: any[];
 }
 
 // ── Screen 8: PATCH /api/violations/:id ──────────────────────

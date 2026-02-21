@@ -24,6 +24,8 @@ import {
     X,
     Loader2,
     BarChart3,
+    History,
+    TrendingDown,
 } from 'lucide-react';
 
 interface EvidenceDrawerProps {
@@ -174,6 +176,69 @@ export function EvidenceDrawer({ violationId, open, onOpenChange }: EvidenceDraw
                                             </p>
                                         </CardContent>
                                     </Card>
+
+                                    {v.historical_context && (
+                                        <Card className="border-primary/20 bg-primary/5">
+                                            <CardHeader className="pb-2">
+                                                <CardTitle className="flex items-center gap-2 text-sm">
+                                                    <History className="h-4 w-4 text-primary" />
+                                                    Historical Context (GDPR Benchmark)
+                                                </CardTitle>
+                                            </CardHeader>
+                                            <CardContent className="space-y-3">
+                                                <div className="flex items-center gap-2 rounded-md bg-background p-2 text-xs border">
+                                                    <TrendingDown className="h-3 w-3 text-ruby" />
+                                                    <span className="font-medium text-muted-foreground">Avg. Historical Fine:</span>
+                                                    <span className="font-bold text-ruby">{v.historical_context.avg_fine}</span>
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Real-World Breach Example</p>
+                                                    <p className="text-xs italic text-muted-foreground">
+                                                        "{v.historical_context.breach_example}"
+                                                    </p>
+                                                </div>
+                                                <div className="pt-2 border-t text-[10px] text-muted-foreground flex justify-between">
+                                                    <span>Source: Kaggle GDPR Violations</span>
+                                                    <span className="font-bold uppercase">{v.historical_context.article_reference}</span>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    )}
+
+                                    {v.full_article_text && v.full_article_text.length > 0 && (
+                                        <Card>
+                                            <CardHeader className="pb-2">
+                                                <CardTitle className="flex items-center gap-2 text-sm">
+                                                    <FileText className="h-4 w-4 text-emerald" />
+                                                    Full GDPR Text: {v.historical_context?.article_reference}
+                                                </CardTitle>
+                                            </CardHeader>
+                                            <CardContent>
+                                                <ScrollArea className="h-[200px] pr-4">
+                                                    <div className="space-y-4">
+                                                        {v.full_article_text.map((sub: any, idx: number) => (
+                                                            <div key={idx} className="space-y-1">
+                                                                <p className="text-[10px] font-bold text-muted-foreground">Paragraph {sub.sub_article}</p>
+                                                                <p className="text-xs text-muted-foreground leading-relaxed">
+                                                                    {sub.gdpr_text}
+                                                                </p>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </ScrollArea>
+                                                <div className="mt-3 pt-2 border-t text-[10px] text-muted-foreground">
+                                                    <a 
+                                                        href={v.full_article_text[0].href} 
+                                                        target="_blank" 
+                                                        rel="noopener noreferrer"
+                                                        className="hover:text-primary transition-colors underline"
+                                                    >
+                                                        Read full article at gdpr-info.eu
+                                                    </a>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    )}
                                 </div>
 
                                 {/* Right Panel: Evidence */}

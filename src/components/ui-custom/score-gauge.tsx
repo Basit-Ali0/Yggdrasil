@@ -21,9 +21,9 @@ function getStrokeColor(score: number): string {
 }
 
 function getScoreLabel(score: number): string {
-    if (score >= 80) return 'Good';
-    if (score >= 50) return 'Warning';
-    return 'Critical';
+    if (score >= 80) return 'Healthy';
+    if (score >= 50) return 'Elevated Risk';
+    return 'Critical Risk';
 }
 
 const sizeConfig = {

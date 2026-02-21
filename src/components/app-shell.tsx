@@ -17,9 +17,9 @@ export function AppShell({ children, maxWidth = 'max-w-5xl' }: AppShellProps) {
     const [sidebarOpen, setSidebarOpen] = useState(false);
 
     return (
-        <div className="flex min-h-screen">
+        <div className="flex h-screen overflow-hidden">
             {/* Desktop sidebar */}
-            <div className="hidden lg:block">
+            <div className="hidden lg:block shrink-0">
                 <AppSidebar />
             </div>
 
@@ -31,9 +31,9 @@ export function AppShell({ children, maxWidth = 'max-w-5xl' }: AppShellProps) {
             </Sheet>
 
             {/* Main content */}
-            <div className="flex flex-1 flex-col">
+            <div className="flex flex-1 flex-col overflow-hidden">
                 {/* Top bar */}
-                <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b bg-background/80 px-4 backdrop-blur-sm lg:justify-end">
+                <header className="flex h-14 shrink-0 items-center justify-between border-b bg-background/80 px-4 backdrop-blur-sm lg:justify-end">
                     <Button
                         variant="ghost"
                         size="icon"
@@ -49,7 +49,7 @@ export function AppShell({ children, maxWidth = 'max-w-5xl' }: AppShellProps) {
                     </div>
                 </header>
 
-                <main className="flex-1 overflow-auto">
+                <main className="flex-1 overflow-y-auto">
                     <div className={`mx-auto ${maxWidth} px-4 py-6 sm:px-6 sm:py-8`}>
                         {children}
                     </div>

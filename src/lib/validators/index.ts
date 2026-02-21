@@ -8,6 +8,7 @@ import { z } from 'zod';
 export const CreateAuditSchema = z.object({
     name: z.string().min(1),
     policy_type: z.enum(['aml', 'gdpr', 'soc2']),
+    selected_categories: z.array(z.string()).optional(),
 });
 
 // ── POST /api/policies/prebuilt ──────────────────────────────
