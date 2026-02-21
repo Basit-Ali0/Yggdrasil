@@ -34,6 +34,7 @@ export const RunScanSchema = z.object({
     policy_id: z.string().uuid(),
     upload_id: z.string().uuid(),
     mapping_id: z.string().uuid(),
+    audit_name: z.string().optional(),
 });
 
 // ── PATCH /api/violations/:id ────────────────────────────────

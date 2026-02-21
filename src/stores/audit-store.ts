@@ -138,7 +138,7 @@ export const useAuditStore = create<AuditState>((set, get) => ({
     },
 
     startScan: async () => {
-        const { auditId, policyId, uploadId, mappingId } = get();
+        const { auditId, policyId, uploadId, mappingId, auditName } = get();
         if (!auditId || !policyId || !uploadId || !mappingId) {
             throw new Error('Missing required IDs to start scan');
         }
@@ -148,6 +148,7 @@ export const useAuditStore = create<AuditState>((set, get) => ({
             policy_id: policyId,
             upload_id: uploadId,
             mapping_id: mappingId,
+            audit_name: auditName || undefined,
         } as StartScanRequest);
 
         set({ scanId: data.scan_id, step: 'scanning' });

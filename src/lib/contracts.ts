@@ -49,6 +49,7 @@ export interface StartScanRequest {
     policy_id: string;
     upload_id: string;
     mapping_id: string;
+    audit_name?: string;
 }
 
 export interface StartScanResponse {
@@ -66,6 +67,7 @@ export interface ScanStatusResponse {
     rules_total: number;
     created_at: string;
     completed_at: string | null;
+    audit_name?: string;
 }
 
 // ── Screen 7: GET /api/violations/cases ──────────────────────
@@ -138,6 +140,7 @@ export interface ScanHistoryEntry {
     resolved_violations: number;
     status: string;
     created_at: string;
+    audit_name?: string;
 }
 
 export interface ScanHistoryResponse {

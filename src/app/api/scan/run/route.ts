@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        const { audit_id, policy_id, upload_id, mapping_id } = parsed.data;
+        const { audit_id, policy_id, upload_id, mapping_id, audit_name } = parsed.data;
         const userId = await getUserIdFromRequest(request);
         const supabase = await getSupabaseForRequest(request);
 
@@ -79,19 +79,26 @@ export async function POST(request: NextRequest) {
 
         // 4. Create scan record (status: running)
         const scanId = uuid();
+        const scanRecord: Record<string, unknown> = {
+            id: scanId,
+            user_id: userId,
+            policy_id,
+            temporal_scale: mapping.temporal_scale,
+            mapping_config: mapping.mapping_config,
+            data_source: 'csv',
+            file_name: upload.fileName,
+            record_count: upload.rows.length,
+            status: 'running',
+        };
+
+        // Try with audit name first; fall back without it if column doesn't exist yet
+        if (audit_name) {
+            scanRecord.audit_name = audit_name;
+        }
+
         const { error: scanCreateErr } = await supabase
             .from('scans')
-            .insert({
-                id: scanId,
-                user_id: userId,
-                policy_id,
-                temporal_scale: mapping.temporal_scale,
-                mapping_config: mapping.mapping_config,
-                data_source: 'csv',
-                file_name: upload.fileName,
-                record_count: upload.rows.length,
-                status: 'running',
-            });
+            .insert(scanRecord);
 
         if (scanCreateErr) {
             console.error('Scan create error:', scanCreateErr);

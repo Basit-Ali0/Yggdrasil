@@ -32,6 +32,7 @@ export async function GET(request: NextRequest) {
                 status: s.status,
                 created_at: s.created_at,
                 completed_at: s.completed_at,
+                audit_name: s.audit_name ?? null,
             })),
         });
 
