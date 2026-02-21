@@ -83,6 +83,25 @@ export function getDefaultMapping(
 }
 
 /**
+ * Get default mapping with confidence values.
+ * Known datasets get 100% confidence (deterministic mapping from docs).
+ * Generic datasets return empty (Gemini provides confidence).
+ */
+export function getDefaultMappingWithConfidence(
+    datasetType: DatasetType
+): Record<string, { column: string; confidence: number }> {
+    const mapping = getDefaultMapping(datasetType);
+    const result: Record<string, { column: string; confidence: number }> = {};
+
+    for (const [field, column] of Object.entries(mapping)) {
+        // Known datasets = deterministic mapping = 100% confidence
+        result[field] = { column, confidence: 100 };
+    }
+
+    return result;
+}
+
+/**
  * Normalize a raw CSV record into the standard NormalizedRecord shape
  * using the confirmed column mapping.
  */

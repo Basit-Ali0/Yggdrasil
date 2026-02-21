@@ -59,8 +59,9 @@ export default function MappingBridgePage() {
 
             const scanId = await startScan();
             router.push(`/audit/${params.id}/scanning?scan=${scanId}`);
-        } catch {
+        } catch (err) {
             setIsStarting(false);
+            useAuditStore.setState({ error: err instanceof Error ? err.message : String(err) });
         }
     };
 
@@ -76,16 +77,21 @@ export default function MappingBridgePage() {
 
             const scanId = await startScan();
             router.push(`/audit/${params.id}/scanning?scan=${scanId}`);
-        } catch {
+        } catch (err) {
             setIsStarting(false);
+            useAuditStore.setState({ error: err instanceof Error ? err.message : String(err) });
         }
     };
 
     const getConfidence = (field: string): number => {
-        // Simulate confidence based on field name matching
-        const exactMatches = ['amount', 'type'];
-        if (exactMatches.includes(field)) return 98;
-        return 85 + Math.floor(Math.random() * 13);
+        // Use real confidence values from the backend
+        // Known datasets (PAYSIM, IBM_AML) = 100%, GENERIC = Gemini-reported
+        const backendConfidence = (uploadData as any).mapping_confidence;
+        if (backendConfidence && backendConfidence[field] != null) {
+            return backendConfidence[field];
+        }
+        // Fallback for fields not in the mapping (e.g., user-added fields)
+        return 0;
     };
 
     return (
