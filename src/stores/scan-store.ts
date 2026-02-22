@@ -18,6 +18,7 @@ interface ScanState {
     pollScanStatus: (scanId: string, onComplete: (scan: ScanStatusResponse) => void) => void;
     stopPolling: () => void;
     fetchHistory: () => Promise<void>;
+    deleteScan: (scanId: string) => Promise<void>;
     clearError: () => void;
     reset: () => void;
 }
@@ -73,6 +74,20 @@ export const useScanStore = create<ScanState>((set, get) => ({
                 error: err instanceof Error ? err.message : 'Failed to load history',
                 isLoadingHistory: false,
             });
+        }
+    },
+
+    deleteScan: async (scanId) => {
+        try {
+            await api.delete(`/scan/${scanId}`);
+            set((state) => ({
+                scanHistory: state.scanHistory.filter((s) => s.id !== scanId),
+            }));
+        } catch (err) {
+            set({
+                error: err instanceof Error ? err.message : 'Failed to delete scan',
+            });
+            throw err;
         }
     },
 

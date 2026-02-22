@@ -102,10 +102,18 @@ export const useViolationStore = create<ViolationState>((set, get) => ({
                 `/violations/${violationId}`,
                 req,
             );
+            
+            // Fetch updated cases to reflect status changes in the dashboard
+            const activeScanId = get().activeViolation?.scan_id;
+
             set({
                 complianceScore: data.updated_score,
                 isReviewing: false,
             });
+
+            if (activeScanId) {
+                await get().fetchCases(activeScanId);
+            }
         } catch (err) {
             // Rollback optimistic update
             if (prevViolation) {
