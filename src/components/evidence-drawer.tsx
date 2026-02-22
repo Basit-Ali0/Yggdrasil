@@ -113,8 +113,8 @@ export function EvidenceDrawer({ violationId, open, onOpenChange }: EvidenceDraw
                         </SheetHeader>
 
                         {/* Body */}
-                        <ScrollArea className="flex-1 px-6 py-4">
-                            <div className="grid gap-6 lg:grid-cols-2">
+                        <ScrollArea className="flex-1 min-h-0">
+                            <div className="px-6 py-4 grid gap-6 lg:grid-cols-2">
                                 {/* Left Panel: Policy & Rule */}
                                 <div className="space-y-4">
                                     <Card>
@@ -144,21 +144,37 @@ export function EvidenceDrawer({ violationId, open, onOpenChange }: EvidenceDraw
                                             </CardTitle>
                                         </CardHeader>
                                         <CardContent>
-                                            <div className="rounded-lg bg-muted p-3 font-mono-code text-xs">
+                                            <div className="rounded-lg bg-muted p-3 font-mono-code text-xs space-y-1">
                                                 <p>
                                                     <span className="text-muted-foreground">Rule:</span>{' '}
                                                     {v.rule_id}
                                                 </p>
-                                                <p>
-                                                    <span className="text-muted-foreground">Threshold:</span>{' '}
-                                                    ${v.threshold?.toLocaleString()}
-                                                </p>
-                                                <p>
-                                                    <span className="text-muted-foreground">Actual:</span>{' '}
-                                                    <span className="text-ruby">
-                                                        ${v.actual_value?.toLocaleString()}
-                                                    </span>
-                                                </p>
+                                                {v.evidence?.condition_summary ? (
+                                                    <p>
+                                                        <span className="text-muted-foreground">Condition:</span>{' '}
+                                                        <span className="text-ruby">
+                                                            {v.evidence.condition_summary}
+                                                        </span>
+                                                    </p>
+                                                ) : (v.threshold != null && v.threshold > 0) ? (
+                                                    <>
+                                                        <p>
+                                                            <span className="text-muted-foreground">Threshold:</span>{' '}
+                                                            ${v.threshold?.toLocaleString()}
+                                                        </p>
+                                                        <p>
+                                                            <span className="text-muted-foreground">Actual:</span>{' '}
+                                                            <span className="text-ruby">
+                                                                ${v.actual_value?.toLocaleString()}
+                                                            </span>
+                                                        </p>
+                                                    </>
+                                                ) : (
+                                                    <p>
+                                                        <span className="text-muted-foreground">Type:</span>{' '}
+                                                        Condition-based check
+                                                    </p>
+                                                )}
                                             </div>
                                         </CardContent>
                                     </Card>
@@ -182,7 +198,7 @@ export function EvidenceDrawer({ violationId, open, onOpenChange }: EvidenceDraw
                                             <CardHeader className="pb-2">
                                                 <CardTitle className="flex items-center gap-2 text-sm">
                                                     <History className="h-4 w-4 text-primary" />
-                                                    Historical Context (GDPR Benchmark)
+                                                    Historical Context
                                                 </CardTitle>
                                             </CardHeader>
                                             <CardContent className="space-y-3">
@@ -210,7 +226,7 @@ export function EvidenceDrawer({ violationId, open, onOpenChange }: EvidenceDraw
                                             <CardHeader className="pb-2">
                                                 <CardTitle className="flex items-center gap-2 text-sm">
                                                     <FileText className="h-4 w-4 text-emerald" />
-                                                    Full GDPR Text: {v.historical_context?.article_reference}
+                                                    Full Text: {v.historical_context?.article_reference}
                                                 </CardTitle>
                                             </CardHeader>
                                             <CardContent>
@@ -245,23 +261,27 @@ export function EvidenceDrawer({ violationId, open, onOpenChange }: EvidenceDraw
                                 <div className="space-y-4">
                                     <Card>
                                         <CardHeader className="pb-2">
-                                            <CardTitle className="text-sm">Transaction Evidence</CardTitle>
+                                            <CardTitle className="text-sm">Record Evidence</CardTitle>
                                         </CardHeader>
                                         <CardContent className="space-y-3">
-                                            <div className="grid gap-3 sm:grid-cols-2">
-                                                <div className="rounded-lg border p-3">
-                                                    <p className="text-xs text-muted-foreground">Amount</p>
-                                                    <p className="font-display text-xl font-bold text-ruby">
-                                                        ${v.amount?.toLocaleString()}
-                                                    </p>
+                                            {(v.amount != null && v.amount > 0) && (
+                                                <div className="grid gap-3 sm:grid-cols-2">
+                                                    <div className="rounded-lg border p-3">
+                                                        <p className="text-xs text-muted-foreground">Amount</p>
+                                                        <p className="font-display text-xl font-bold text-ruby">
+                                                            ${v.amount?.toLocaleString()}
+                                                        </p>
+                                                    </div>
+                                                    {v.transaction_type && (
+                                                        <div className="rounded-lg border p-3">
+                                                            <p className="text-xs text-muted-foreground">Type</p>
+                                                            <p className="text-sm font-medium">
+                                                                {v.transaction_type}
+                                                            </p>
+                                                        </div>
+                                                    )}
                                                 </div>
-                                                <div className="rounded-lg border p-3">
-                                                    <p className="text-xs text-muted-foreground">Type</p>
-                                                    <p className="text-sm font-medium">
-                                                        {v.transaction_type ?? 'N/A'}
-                                                    </p>
-                                                </div>
-                                            </div>
+                                            )}
 
                                             {/* Evidence fields */}
                                             {v.evidence && Object.keys(v.evidence).length > 0 && (
