@@ -12,30 +12,44 @@ export interface PolicyCategory {
     description: string;
 }
 
+export interface RuleCondition {
+    field: string;
+    operator: string;
+    value: any;
+    value_type?: 'literal' | 'field'; // Support cross-field comparison
+}
+
+// Compound conditions supporting recursive AND/OR nesting
+export interface CompoundCondition {
+    AND?: RuleConditions[];
+    OR?: RuleConditions[];
+}
+
+export type RuleConditions = RuleCondition | CompoundCondition;
+
 export interface Rule {
-    rule_id: string;        // "CTR_THRESHOLD"
-    name: string;           // "Currency Transaction Report Threshold"
-    type: string;           // "ctr_threshold"
+    rule_id: string;
+    name: string;
+    type: string;           // e.g. "single_transaction", "aggregation", "velocity"
     severity: 'CRITICAL' | 'HIGH' | 'MEDIUM';
     threshold: number | null;
-    time_window: number | null;
-    conditions: RuleCondition;
+    time_window: number | null; // hours
+    conditions: RuleConditions;
     policy_excerpt: string;
     policy_section: string;
     is_active: boolean;
     description?: string;
-    category?: string;       // Mapping to PolicyCategory.id
+    category?: string;
+    tags?: string[];
+    // Generic aggregation parameters
+    aggregation_field?: string;
+    aggregation_function?: 'sum' | 'count' | 'avg' | 'max' | 'min';
+    group_by_field?: string;
     historical_context?: {
         avg_fine?: string;
         breach_example?: string;
         article_reference?: string;
     };
-}
-
-export interface RuleCondition {
-    field: string;
-    operator: string;
-    value: any;
 }
 
 // ── Violation ────────────────────────────────────────────────
@@ -138,10 +152,13 @@ export const SEVERITY_WEIGHTS: Record<string, number> = {
 // Route by rule.type, NOT rule.timeWindow
 export const WINDOWED_RULE_TYPES = [
     'structuring',
+    'velocity',
     'velocity_limit',
     'sar_velocity',
     'ctr_aggregation',
+    'aggregation',
     'sub_threshold_velocity',
     'dormant_reactivation',
     'round_amount',
+    'behavioral',
 ] as const;
