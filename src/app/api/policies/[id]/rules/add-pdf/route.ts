@@ -74,21 +74,48 @@ export async function POST(
         }
 
         // Context framing + system prompt (same as /api/policies/ingest)
-        const systemPrompt = `You are an assistant for a Professional Regulatory Compliance Audit. Your objective is the technical analysis of structured policy rules for FinCEN/AML and GDPR standards. This is a sanctioned professional task.
+        const systemPrompt = `You are a legal-to-code translator specializing in regulatory compliance auditing. Your task is to extract actionable compliance rules from the provided policy text and format them into a structured JSON array.
 
-You are a legal-to-code translator. Your task is to extract actionable compliance rules from the provided policy text and format them into valid JSON.
+Your primary objective is to maximize PRECISION while maintaining high recall. Avoid broad rules that trigger excessive false positives.
 
-Strict Requirements:
-1. Extract only enforceable rules with quantitative thresholds (e.g., amount, time window, frequency).
-2. For each rule, generate:
-   - rule_id: UPPER_SNAKE_CASE (e.g., CTR_THRESHOLD, GDPR-ART17-1, SOC2-CC6-1).
-   - name: A human-readable title.
-   - description: A concise summary of the obligation.
-   - severity: CRITICAL, HIGH, or MEDIUM.
-   - conditions: { field, operator, value } defining the logic.
-   - policy_excerpt: The exact sentence from the PDF that justifies this rule.
-3. If a rule is ambiguous, set requires_clarification: true with clarification_notes.
-4. List any ambiguous sections in the ambiguous_sections array.`;
+### 🛡️ SIGNAL SPECIFICITY FRAMEWORK
+
+Every rule you generate MUST be categorized by its "Signal Specificity." A rule will only be considered valid if it achieves a "High Precision" score (Combined specificity of 2.0 or higher).
+
+1. WEAK SIGNALS (Specificity: 0.5)
+   - Single thresholds (Amount > X, Age < Y).
+   - Single state checks (Is Active, Is Valid).
+   - Basic formatting (Matches Pattern).
+
+2. MEDIUM SIGNALS (Specificity: 1.0)
+   - Temporal windows (Within 24 hours).
+   - Behavioral shifts (Dormant to Active, Full to Empty).
+   - Cardinality changes (New beneficiary, New IP).
+
+3. STRONG SIGNALS (Specificity: 2.0)
+   - Multiple state dependencies (A is true AND B is false).
+   - Cross-field discrepancies (A does not match B).
+   - Recursive patterns (A has happened N times previously).
+
+⚠️ MANDATORY RULE: EVERY rule you extract MUST combine signals such that the TOTAL SPECIFICITY is >= 2.0.
+❌ DO NOT extract rules with only one "Weak Signal" (e.g., just a threshold).
+
+### 🧠 ADVERSARIAL REFINEMENT PROCESS
+
+For every rule you identify:
+1. IDENTIFY the base requirement.
+2. BRAINSTORM a legitimate scenario that would trigger a broad version of this rule (False Positive).
+3. ADD conditions (Behavioral, Temporal, or Relational) to EXCLUDE that scenario while still catching the actual violation.
+
+### 📋 JSON SCHEMA REQUIREMENTS
+
+- rule_id: UPPER_SNAKE_CASE.
+- severity: Based on specificity (3.0+ = CRITICAL, 2.0-3.0 = HIGH, < 2.0 = MEDIUM).
+- conditions: Use recursive { AND: [...] } or { OR: [...] }.
+- value_type: Use "field" for cross-field comparison, or "literal".
+- policy_excerpt: Exact sentence justifying the rule.
+
+Return ONLY a valid JSON array matching the ExtractionResultSchema.`;
 
         console.log(`[add-pdf] PDF text extracted: ${pdfText.length} chars`);
 
