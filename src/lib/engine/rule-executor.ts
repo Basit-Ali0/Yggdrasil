@@ -128,6 +128,7 @@ export class RuleExecutor {
         metadata?: DatasetMetadata
     ): {
         violations: ViolationResult[];
+        trueViolationCount: number;
         rulesProcessed: number;
         rulesTotal: number;
     } {
@@ -146,6 +147,7 @@ export class RuleExecutor {
         const violations: ViolationResult[] = [];
         const activeRules = rules.filter((r) => r.is_active);
         let rulesProcessed = 0;
+        let trueViolationCount = 0;
 
         console.log(`[EXECUTOR] Starting scan with ${activeRules.length} active rules against ${sampled.length} rows`);
 
@@ -157,17 +159,20 @@ export class RuleExecutor {
                 sampled,
                 config.temporalScale
             );
-            
-            // NOISE GATE: Cap violations per rule to prevent system overload
+
+            // Track the true violation count before capping (for accurate scoring)
+            trueViolationCount += ruleViolations.length;
+
+            // NOISE GATE: Cap stored violations per rule to prevent system overload
             const VIOLATION_CAP = 1000;
             let finalRuleViolations = ruleViolations;
-            
+
             if (ruleViolations.length > VIOLATION_CAP) {
-                console.warn(`[EXECUTOR] Rule ${rule.rule_id} is too noisy (${ruleViolations.length} hits). Capping at ${VIOLATION_CAP}.`);
+                console.warn(`[EXECUTOR] Rule ${rule.rule_id} is too noisy (${ruleViolations.length} hits). Storing top ${VIOLATION_CAP}.`);
                 finalRuleViolations = ruleViolations.slice(0, VIOLATION_CAP);
             }
 
-            console.log(`[EXECUTOR] Rule ${rule.rule_id} found ${ruleViolations.length} violations (recorded ${finalRuleViolations.length})`);
+            console.log(`[EXECUTOR] Rule ${rule.rule_id} found ${ruleViolations.length} violations (stored ${finalRuleViolations.length})`);
 
             // Step 4: Scoring Layer (ML-Inspired)
             const scoredViolations = finalRuleViolations.map(v => ({
@@ -179,7 +184,7 @@ export class RuleExecutor {
             rulesProcessed++;
         }
 
-        console.log(`[EXECUTOR] Scan complete. Total violations found: ${violations.length}`);
+        console.log(`[EXECUTOR] Scan complete. Total violations: ${trueViolationCount} (stored: ${violations.length})`);
 
         // Step 5: Rank by confidence
         const rankedViolations = violations.sort((a, b) =>
@@ -188,6 +193,7 @@ export class RuleExecutor {
 
         return {
             violations: rankedViolations,
+            trueViolationCount,
             rulesProcessed,
             rulesTotal: activeRules.length,
         };
