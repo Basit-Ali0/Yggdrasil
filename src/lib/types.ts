@@ -45,6 +45,9 @@ export interface Rule {
     aggregation_field?: string;
     aggregation_function?: 'sum' | 'count' | 'avg' | 'max' | 'min';
     group_by_field?: string;
+    // Bayesian precision stats
+    approved_count?: number;
+    false_positive_count?: number;
     historical_context?: {
         avg_fine?: string;
         breach_example?: string;
