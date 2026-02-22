@@ -49,7 +49,7 @@ function normalizeRuleForEngine(rule: Rule): Rule {
 /**
  * ML Scoring Model (L1)
  * Assigns a confidence score to each violation based on rule quality,
- * signal specificity, and statistical anomaly detection.
+ * signal specificity, statistical anomaly detection, and historical precision.
  */
 function calculateConfidence(
     violation: ViolationResult, 
@@ -81,7 +81,19 @@ function calculateConfidence(
         }
     }
 
-    // 3. Criticality weighting
+    // 3. Bayesian Historical Precision (Feedback Loop)
+    // Formula: (1 + TP) / (2 + TP + FP)
+    const tp = rule.approved_count || 0;
+    const fp = rule.false_positive_count || 0;
+    const historicalPrecision = (1 + tp) / (2 + tp + fp);
+    
+    // We blend the historical precision with the rule quality score
+    // If we have many reviews (> 5), we weight history more heavily
+    const reviewCount = tp + fp;
+    const historyWeight = Math.min(0.7, reviewCount / 20); // Cap history weight at 70%
+    score = (score * (1 - historyWeight)) + (historicalPrecision * historyWeight);
+
+    // 4. Criticality weighting
     if (rule.severity === 'CRITICAL') score += 0.1;
 
     return Math.max(0, Math.min(1, score));
