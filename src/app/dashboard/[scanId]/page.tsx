@@ -143,16 +143,21 @@ export default function DashboardPage() {
         const loadScanDetails = async () => {
             try {
                 const scan = await api.get<ScanStatusResponse>(`/scan/${scanId}`);
+                // Update local state for policy
                 if (scan.policy_id) {
                     setPolicyId(scan.policy_id);
                     fetchPolicy(scan.policy_id);
+                }
+                // Sync with scan store if needed
+                if (!currentScan) {
+                    useScanStore.setState({ currentScan: scan });
                 }
             } catch {
                 // Non-critical: policy buttons just won't show
             }
         };
         loadScanDetails();
-    }, [scanId, fetchPolicy]);
+    }, [scanId, fetchPolicy, currentScan]);
 
     const aggregation = useMemo(() => buildAggregation(cases), [cases]);
 
@@ -180,7 +185,7 @@ export default function DashboardPage() {
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h1 className="text-2xl font-semibold tracking-tight">
-                        {auditName || 'Compliance Dashboard'}
+                        {auditName ? `${auditName} - Compliance Dashboard` : 'Compliance Dashboard'}
                     </h1>
                     <p className="mt-1 text-muted-foreground">
                         Scan results and compliance score for your audit.

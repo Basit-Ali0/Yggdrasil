@@ -110,15 +110,15 @@ export function PolicyUpdateSheet({ policyId, open, onOpenChange }: PolicyUpdate
 
     return (
         <Sheet open={open} onOpenChange={onOpenChange}>
-            <SheetContent className="sm:max-w-lg p-0 overflow-hidden">
+            <SheetContent className="sm:max-w-lg p-0 flex flex-col h-full overflow-hidden">
                 {isLoading || !policy ? (
                     <div className="flex h-full items-center justify-center">
                         <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
                     </div>
                 ) : (
-                    <div className="flex h-full flex-col">
+                    <>
                         {/* Header */}
-                        <SheetHeader className="border-b px-6 py-4">
+                        <SheetHeader className="border-b px-6 py-4 shrink-0 gap-1">
                             <SheetTitle className="text-lg">Update Policies</SheetTitle>
                             <SheetDescription className="flex items-center gap-2">
                                 {policy.name}
@@ -129,24 +129,25 @@ export function PolicyUpdateSheet({ policyId, open, onOpenChange }: PolicyUpdate
                         </SheetHeader>
 
                         {/* Body */}
-                        <ScrollArea className="flex-1 px-6 py-4">
-                            <div className="space-y-6">
+                        <ScrollArea className="flex-1 min-h-0">
+                            <div className="px-6 py-6 space-y-8 pb-20">
                                 {/* Section 1: Active Rules */}
                                 <div>
-                                    <div className="flex items-center justify-between mb-3">
+                                    <div className="flex items-center justify-between mb-4">
                                         <h3 className="text-sm font-medium">Active Rules</h3>
-                                        <Badge variant="secondary" className="text-xs">
-                                            {activeRuleCount} of {policy.rules.length} active
+                                        <Badge variant="secondary" className="text-xs font-mono">
+                                            {activeRuleCount} / {policy.rules.length} active
                                         </Badge>
                                     </div>
 
-                                    <div className="space-y-2">
+                                    <div className="space-y-3">
                                         {policy.rules.map((rule) => (
                                             <div
                                                 key={rule.rule_id}
-                                                className="flex items-center gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/50"
+                                                className="flex items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/50"
                                             >
                                                 <Switch
+                                                    className="mt-1"
                                                     size="sm"
                                                     checked={rule.is_active}
                                                     onCheckedChange={(checked) =>
@@ -156,11 +157,11 @@ export function PolicyUpdateSheet({ policyId, open, onOpenChange }: PolicyUpdate
                                                 />
 
                                                 <div className="flex-1 min-w-0">
-                                                    <p className="text-sm font-medium truncate">
+                                                    <p className="text-sm font-medium leading-tight">
                                                         {rule.name}
                                                     </p>
-                                                    <div className="flex items-center gap-2 mt-0.5">
-                                                        <span className="font-mono text-[10px] text-muted-foreground">
+                                                    <div className="flex items-center gap-2 mt-1.5">
+                                                        <span className="font-mono text-[10px] text-muted-foreground bg-muted px-1 rounded">
                                                             {rule.rule_id}
                                                         </span>
                                                         <SeverityBadge severity={rule.severity} />
@@ -170,19 +171,21 @@ export function PolicyUpdateSheet({ policyId, open, onOpenChange }: PolicyUpdate
                                                 <Button
                                                     variant="ghost"
                                                     size="icon"
-                                                    className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+                                                    className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
                                                     onClick={() => handleDelete(rule.rule_id)}
                                                     disabled={isUpdating}
                                                 >
-                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                    <Trash2 className="h-4 w-4" />
                                                 </Button>
                                             </div>
                                         ))}
 
                                         {policy.rules.length === 0 && (
-                                            <p className="py-6 text-center text-sm text-muted-foreground">
-                                                No rules configured. Add rules below.
-                                            </p>
+                                            <div className="py-10 text-center border rounded-lg border-dashed">
+                                                <p className="text-sm text-muted-foreground">
+                                                    No rules configured. Add rules below.
+                                                </p>
+                                            </div>
                                         )}
                                     </div>
                                 </div>
@@ -191,39 +194,41 @@ export function PolicyUpdateSheet({ policyId, open, onOpenChange }: PolicyUpdate
 
                                 {/* Section 2: Add Rules */}
                                 <div>
-                                    <h3 className="text-sm font-medium mb-3">Add Rules</h3>
+                                    <h3 className="text-sm font-medium mb-4">Add More Rules</h3>
 
                                     <Tabs defaultValue="prebuilt">
                                         <TabsList className="w-full">
                                             <TabsTrigger value="prebuilt" className="flex-1">
-                                                Prebuilt
+                                                Frameworks
                                             </TabsTrigger>
                                             <TabsTrigger value="pdf" className="flex-1">
-                                                PDF Upload
+                                                Custom PDF
                                             </TabsTrigger>
                                         </TabsList>
 
-                                        <TabsContent value="prebuilt" className="mt-3">
-                                            <div className="grid gap-2">
+                                        <TabsContent value="prebuilt" className="mt-4">
+                                            <div className="grid gap-3">
                                                 {policyCards.map((card) => {
                                                     const Icon = card.icon;
                                                     return (
                                                         <Card
                                                             key={card.type}
-                                                            className="cursor-pointer transition-colors hover:bg-muted/50"
+                                                            className="cursor-pointer transition-all hover:border-primary/50 hover:bg-muted/30"
                                                             onClick={() =>
                                                                 !isUpdating &&
                                                                 handleAddPrebuilt(card.type)
                                                             }
                                                         >
-                                                            <CardContent className="flex items-center gap-3 p-3">
-                                                                {isUpdating ? (
-                                                                    <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
-                                                                ) : (
-                                                                    <Icon className="h-4 w-4 shrink-0 text-primary" />
-                                                                )}
-                                                                <div className="min-w-0">
-                                                                    <p className="text-sm font-medium">
+                                                            <CardContent className="flex items-center gap-4 p-4">
+                                                                <div className="h-9 w-9 flex items-center justify-center rounded-lg bg-primary/10">
+                                                                    {isUpdating ? (
+                                                                        <Loader2 className="h-5 w-5 shrink-0 animate-spin text-primary" />
+                                                                    ) : (
+                                                                        <Icon className="h-5 w-5 shrink-0 text-primary" />
+                                                                    )}
+                                                                </div>
+                                                                <div className="min-w-0 flex-1">
+                                                                    <p className="text-sm font-semibold">
                                                                         {card.label}
                                                                     </p>
                                                                     <p className="text-xs text-muted-foreground">
@@ -237,24 +242,30 @@ export function PolicyUpdateSheet({ policyId, open, onOpenChange }: PolicyUpdate
                                             </div>
                                         </TabsContent>
 
-                                        <TabsContent value="pdf" className="mt-3">
-                                            <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed p-6">
-                                                <FileText className="h-8 w-8 text-muted-foreground" />
-                                                <p className="text-sm text-muted-foreground text-center">
-                                                    Upload a PDF policy document to extract rules automatically.
-                                                </p>
+                                        <TabsContent value="pdf" className="mt-4">
+                                            <div className="flex flex-col items-center gap-4 rounded-lg border border-dashed p-10 bg-muted/20">
+                                                <div className="h-12 w-12 flex items-center justify-center rounded-full bg-primary/10">
+                                                    <FileText className="h-6 w-6 text-primary" />
+                                                </div>
+                                                <div className="text-center space-y-1">
+                                                    <p className="text-sm font-medium">Upload PDF Policy</p>
+                                                    <p className="text-xs text-muted-foreground max-w-[200px] mx-auto">
+                                                        Gemini will automatically extract enforceable rules.
+                                                    </p>
+                                                </div>
                                                 <Button
                                                     variant="outline"
                                                     size="sm"
                                                     onClick={() => fileInputRef.current?.click()}
                                                     disabled={isUpdating}
+                                                    className="mt-2"
                                                 >
                                                     {isUpdating ? (
                                                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                                     ) : (
                                                         <Upload className="mr-2 h-4 w-4" />
                                                     )}
-                                                    Select PDF
+                                                    Choose File
                                                 </Button>
                                                 <input
                                                     ref={fileInputRef}
@@ -269,7 +280,7 @@ export function PolicyUpdateSheet({ policyId, open, onOpenChange }: PolicyUpdate
                                 </div>
                             </div>
                         </ScrollArea>
-                    </div>
+                    </>
                 )}
             </SheetContent>
         </Sheet>

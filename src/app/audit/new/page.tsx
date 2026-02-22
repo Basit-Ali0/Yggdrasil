@@ -379,10 +379,10 @@ export default function NewAuditPage() {
                     </div>
 
                     {/* Split Panel Body */}
-                    <div className="flex-1 grid grid-cols-2 gap-4 min-h-0 overflow-hidden py-2">
+                    <div className="flex-1 flex gap-6 min-h-0 py-2 overflow-hidden">
                         {/* LEFT: PDF Text */}
-                        <div className="flex flex-col min-h-0">
-                            <h3 className="text-sm font-medium mb-2 flex items-center gap-2">
+                        <div className="flex-1 flex flex-col min-h-0">
+                            <h3 className="text-sm font-medium mb-2 flex items-center gap-2 shrink-0">
                                 Extracted Text
                                 {extractedText && (
                                     <span className="text-xs text-muted-foreground font-normal">
@@ -405,7 +405,7 @@ export default function NewAuditPage() {
                                     )}
                                 </div>
                             ) : (
-                                <ScrollArea className="flex-1 border rounded-lg">
+                                <ScrollArea className="flex-1 min-h-0 border rounded-lg bg-muted/5">
                                     <pre className="text-xs whitespace-pre-wrap font-mono-code p-4 leading-relaxed text-muted-foreground">
                                         {extractedText}
                                     </pre>
@@ -414,8 +414,8 @@ export default function NewAuditPage() {
                         </div>
 
                         {/* RIGHT: Rules */}
-                        <div className="flex flex-col min-h-0">
-                            <h3 className="text-sm font-medium mb-2 flex items-center gap-2">
+                        <div className="flex-1 flex flex-col min-h-0">
+                            <h3 className="text-sm font-medium mb-2 flex items-center gap-2 shrink-0">
                                 Generated Rules
                                 {pdfStage === 'ready' && (
                                     <span className="text-xs text-muted-foreground font-normal">
@@ -424,7 +424,7 @@ export default function NewAuditPage() {
                                 )}
                             </h3>
                             {pdfStage === 'ready' ? (
-                                <ScrollArea className="flex-1 border rounded-lg">
+                                <ScrollArea className="flex-1 min-h-0 border rounded-lg">
                                     <div className="divide-y">
                                         {extractedRules.map((rule) => (
                                             <div
