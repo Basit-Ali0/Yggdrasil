@@ -1,0 +1,41 @@
+{
+  "true_positives": 91,
+  "false_positives": 37530,
+  "true_negatives": 12370,
+  "false_negatives": 9,
+  "precision": 0.0024188618059062758,
+  "recall": 0.91,
+  "f1_score": 0.004824898597598154,
+  "accuracy": 0.24922,
+  "total_transactions": 50000,
+  "actual_fraud_count": 100,
+  "detected_count": 37621,
+  "detection_rate": 0.91,
+  "false_positive_rate": 0.7521042084168337,
+  "rule_breakdown": {
+    "CTR_THRESHOLD": {
+      "detected": 26598,
+      "fraud_in_detected": 90
+    },
+    "SAR_THRESHOLD": {
+      "detected": 4670,
+      "fraud_in_detected": 44
+    },
+    "HIGH_VALUE_TRANSFER": {
+      "detected": 4368,
+      "fraud_in_detected": 21
+    },
+    "FRAUD_INDICATOR": {
+      "detected": 1757,
+      "fraud_in_detected": 25
+    },
+    "BALANCE_MISMATCH": {
+      "detected": 35509,
+      "fraud_in_detected": 4
+    },
+    "SAR_VELOCITY": {
+      "detected": 26712,
+      "fraud_in_detected": 60
+    }
+  }
+}
