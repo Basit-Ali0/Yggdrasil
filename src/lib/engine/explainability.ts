@@ -6,19 +6,51 @@
 import { NormalizedRecord, Rule } from '../types';
 
 /**
+ * Extract a human-readable summary of a rule's conditions.
+ * Recursively walks AND/OR trees and builds a bullet list.
+ */
+function summarizeConditions(cond: any, record: NormalizedRecord, depth = 0): string {
+    if (!cond) return '';
+    const indent = '  '.repeat(depth);
+
+    if ('AND' in cond && Array.isArray(cond.AND)) {
+        const parts = cond.AND.map((c: any) => summarizeConditions(c, record, depth + 1));
+        return `${indent}ALL of:\n${parts.join('\n')}`;
+    }
+    if ('OR' in cond && Array.isArray(cond.OR)) {
+        const parts = cond.OR.map((c: any) => summarizeConditions(c, record, depth + 1));
+        return `${indent}ANY of:\n${parts.join('\n')}`;
+    }
+    if ('field' in cond) {
+        const actualValue = record[cond.field];
+        if (cond.operator === 'exists') {
+            return `${indent}- ${cond.field} is present (value: ${JSON.stringify(actualValue)})`;
+        }
+        if (cond.operator === 'not_exists') {
+            return `${indent}- ${cond.field} is missing or empty (value: ${JSON.stringify(actualValue)})`;
+        }
+        return `${indent}- ${cond.field} ${cond.operator} ${JSON.stringify(cond.value)} (actual: ${JSON.stringify(actualValue)})`;
+    }
+    return '';
+}
+
+/**
  * Generate a human-readable explanation for a single-transaction violation.
  * Uses templates from explainability.md — never calls LLM.
+ * Falls back to a generic condition-based explanation for non-AML rules.
  */
 export function generateExplanation(
     rule: Rule,
     record: NormalizedRecord
 ): string {
-    const txId = `${record.step}_${record.account}`;
+    const recordId = record.account
+        ? `${record.step}_${record.account}`
+        : `record_${record.step}`;
 
     switch (rule.rule_id) {
         case 'CTR_THRESHOLD':
             return (
-                `Transaction ${txId} was flagged under CTR_THRESHOLD because:\n\n` +
+                `Transaction ${recordId} was flagged under CTR_THRESHOLD because:\n\n` +
                 `- Amount: $${record.amount.toLocaleString()}\n` +
                 `- Threshold: $10,000\n` +
                 `- Transaction Type: ${record.type}\n` +
@@ -31,7 +63,7 @@ export function generateExplanation(
 
         case 'SAR_THRESHOLD':
             return (
-                `Transaction ${txId} was flagged under SAR_THRESHOLD because:\n\n` +
+                `Transaction ${recordId} was flagged under SAR_THRESHOLD because:\n\n` +
                 `- Amount: $${record.amount.toLocaleString()}\n` +
                 `- Threshold: $5,000\n` +
                 `- Trigger: amount + suspicious pattern\n\n` +
@@ -45,7 +77,7 @@ export function generateExplanation(
             const actual = record.newbalanceOrig!;
             const discrepancy = Math.abs(expected - actual);
             return (
-                `Transaction ${txId} was flagged under BALANCE_MISMATCH because:\n\n` +
+                `Transaction ${recordId} was flagged under BALANCE_MISMATCH because:\n\n` +
                 `- Transaction Amount: $${record.amount.toLocaleString()}\n` +
                 `- Expected Balance Change: $${expected.toLocaleString()}\n` +
                 `- Actual Balance Change: $${actual.toLocaleString()}\n` +
@@ -60,7 +92,7 @@ export function generateExplanation(
 
         case 'FRAUD_INDICATOR':
             return (
-                `Transaction ${txId} was flagged under FRAUD_INDICATOR because:\n\n` +
+                `Transaction ${recordId} was flagged under FRAUD_INDICATOR because:\n\n` +
                 `- Transaction Type: ${record.type}\n` +
                 `- Recipient: ${record.recipient}\n` +
                 `- Recipient Old Balance: $${(record.oldbalanceDest ?? 0).toLocaleString()}\n` +
@@ -73,7 +105,7 @@ export function generateExplanation(
 
         case 'HIGH_VALUE_TRANSFER':
             return (
-                `Transaction ${txId} was flagged under HIGH_VALUE_TRANSFER because:\n\n` +
+                `Transaction ${recordId} was flagged under HIGH_VALUE_TRANSFER because:\n\n` +
                 `- Transaction Type: ${record.type}\n` +
                 `- Amount: $${record.amount.toLocaleString()}\n` +
                 `- Threshold: $50,000\n\n` +
@@ -83,8 +115,37 @@ export function generateExplanation(
                 `requires enhanced review.`
             );
 
-        default:
-            return `Transaction ${txId} triggered ${rule.name}`;
+        default: {
+            // Generic explanation using rule metadata and condition summary
+            const lines: string[] = [];
+            lines.push(`Record ${recordId} was flagged under ${rule.rule_id} (${rule.name}) because:\n`);
+
+            if (rule.conditions) {
+                lines.push(summarizeConditions(rule.conditions, record));
+                lines.push('');
+            }
+
+            if (rule.policy_excerpt) {
+                lines.push(`Policy Reference: ${rule.policy_section || 'N/A'}`);
+                lines.push(`Excerpt: "${rule.policy_excerpt}"`);
+            }
+
+            lines.push(`Severity: ${rule.severity}`);
+
+            if (rule.description) {
+                // Description may be a JSON string from DB (serialized with historical_context)
+                let descText = rule.description;
+                try {
+                    const parsed = JSON.parse(rule.description);
+                    if (parsed.text) descText = parsed.text;
+                } catch {
+                    // Not JSON, use raw string
+                }
+                lines.push(`\n${descText}`);
+            }
+
+            return lines.join('\n');
+        }
     }
 }
 
@@ -179,7 +240,20 @@ export function generateWindowedExplanation(
                 `to avoid detection.`
             );
 
-        default:
-            return `Account ${account} triggered ${rule.name}`;
+        default: {
+            const lines: string[] = [];
+            lines.push(`Account ${account} was flagged under ${rule.rule_id} (${rule.name}) because:\n`);
+            lines.push(`- Transaction Count: ${records.length}`);
+            lines.push(`- Total Amount: $${total.toLocaleString()}`);
+            if (extras.actual_value != null) {
+                lines.push(`- Measured Value: ${extras.actual_value}`);
+            }
+            if (rule.policy_excerpt) {
+                lines.push(`\nPolicy Reference: ${rule.policy_section || 'N/A'}`);
+                lines.push(`Excerpt: "${rule.policy_excerpt}"`);
+            }
+            lines.push(`Severity: ${rule.severity}`);
+            return lines.join('\n');
+        }
     }
 }

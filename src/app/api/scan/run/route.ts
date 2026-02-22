@@ -75,6 +75,9 @@ export async function POST(request: NextRequest) {
             policy_section: r.policy_section ?? '',
             is_active: r.is_active,
             description: r.description,
+            // Pass precision counts
+            approved_count: r.approved_count ?? 0,
+            false_positive_count: r.false_positive_count ?? 0,
         }));
 
         // 4. Create scan record (status: running)
@@ -111,6 +114,7 @@ export async function POST(request: NextRequest) {
         }
 
         // 5. Run scan synchronously (< 5s for 50K rows)
+        console.log(`[SCAN-API] Triggering executor for scanId: ${scanId}`);
         const executor = new RuleExecutor();
         const { violations, rulesProcessed, rulesTotal } = executor.executeAll(
             rules,
@@ -119,17 +123,22 @@ export async function POST(request: NextRequest) {
                 temporalScale: mapping.temporal_scale,
                 sampleLimit: 50000,
                 columnMapping: mapping.mapping_config,
-            }
+            },
+            upload.metadata // Pass dataset metadata for ML scoring
         );
+        console.log(`[SCAN-API] Executor finished for scanId: ${scanId}. Found ${violations.length} violations across ${rulesProcessed} rules.`);
 
         // 6. Calculate compliance score
+        console.log(`[SCAN-API] Calculating compliance score...`);
         const score = calculateComplianceScore(
             Math.min(upload.rows.length, 50000),
             violations.map((v) => ({ severity: v.severity, status: v.status }))
         );
+        console.log(`[SCAN-API] Compliance score: ${score}`);
 
-        // 7. Insert violations into Supabase (batch)
+        // 7. Insert violations into Supabase (Concurrent Batching)
         if (violations.length > 0) {
+            console.log(`[SCAN-API] Persisting ${violations.length} violations to Supabase...`);
             const violationRows = violations.map((v) => ({
                 id: v.id,
                 scan_id: scanId,
@@ -149,21 +158,38 @@ export async function POST(request: NextRequest) {
                 status: 'pending',
             }));
 
-            // Insert in batches of 500 to avoid payload limits
-            const BATCH_SIZE = 500;
+            // Larger batch size and concurrent processing
+            const BATCH_SIZE = 2500;
+            const batches = [];
             for (let i = 0; i < violationRows.length; i += BATCH_SIZE) {
-                const batch = violationRows.slice(i, i + BATCH_SIZE);
-                const { error: vError } = await supabase
-                    .from('violations')
-                    .insert(batch);
+                batches.push(violationRows.slice(i, i + BATCH_SIZE));
+            }
 
-                if (vError) {
-                    console.error('Violations insert error (batch):', vError);
-                }
+            console.log(`[SCAN-API] Sending ${batches.length} concurrent batches to Supabase...`);
+            
+            // Run batches with a concurrency limit to avoid overwhelming the DB
+            const CONCURRENCY_LIMIT = 5;
+            let failedBatches = 0;
+            for (let i = 0; i < batches.length; i += CONCURRENCY_LIMIT) {
+                const chunk = batches.slice(i, i + CONCURRENCY_LIMIT);
+                await Promise.all(chunk.map(batch =>
+                    supabase.from('violations').insert(batch).then(({ error }) => {
+                        if (error) {
+                            console.error('[SCAN-API] Batch insert error:', error);
+                            failedBatches++;
+                        }
+                    })
+                ));
+                console.log(`[SCAN-API] Completed ${Math.min(i + CONCURRENCY_LIMIT, batches.length)} of ${batches.length} batches.`);
+            }
+
+            if (failedBatches > 0) {
+                console.warn(`[SCAN-API] ${failedBatches} of ${batches.length} batches failed for scan ${scanId}`);
             }
         }
 
         // 8. Update scan to completed
+        console.log(`[SCAN-API] Marking scan ${scanId} as completed.`);
         const { error: scanUpdateErr } = await supabase
             .from('scans')
             .update({

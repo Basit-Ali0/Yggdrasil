@@ -160,9 +160,27 @@ export async function PATCH(
 
         const { data: scan } = await supabase
             .from('scans')
-            .select('record_count')
+            .select('record_count, policy_id')
             .eq('id', updated.scan_id)
             .single();
+
+        // ── Bayesian Feedback Loop ─────────────────────────────
+        // Increment the parent rule's approved or false_positive count
+        if (scan?.policy_id && updated.rule_id) {
+            const columnToIncrement = dbStatus === 'approved'
+                ? 'approved_count'
+                : 'false_positive_count';
+
+            try {
+                await supabase.rpc('increment_rule_stat', {
+                    target_policy_id: scan.policy_id,
+                    target_rule_id: updated.rule_id,
+                    stat_column: columnToIncrement
+                });
+            } catch (rpcErr) {
+                console.warn('[violations/PATCH] increment_rule_stat RPC failed (migration may not be applied):', rpcErr);
+            }
+        }
 
         const newScore = calculateComplianceScore(
             scan?.record_count ?? 0,

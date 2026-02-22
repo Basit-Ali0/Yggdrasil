@@ -36,3 +36,4 @@ next-env.d.ts
 # Large test datasets
 PS_*.csv
 paysim_test.csv
+public/fraud_detection_subset_50k.csv

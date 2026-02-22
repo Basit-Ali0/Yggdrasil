@@ -71,8 +71,22 @@ export async function POST(request: NextRequest) {
 
                 const result = await geminiGenerateObject({
                     schema: MappingSchema,
-                    system: 'You are a data engineer. Map raw CSV headers to the standard schema: amount, step (timestamp), account (sender_id), recipient (receiver_id), type (transaction_type).',
-                    prompt: `Map these CSV headers to the standard schema.\n\nHeaders: ${headers.join(', ')}\n\nSample data (first 3 rows):\n${JSON.stringify(rows.slice(0, 3), null, 2)}`,
+                    system: `You are a data engineer analyzing CSV datasets for compliance auditing. Your job is to map raw CSV headers to standard fields when applicable.
+
+Standard fields (map ONLY if a matching column exists):
+- amount: monetary value (transaction amount, payment, cost, etc.)
+- step: timestamp or time-step column (date, timestamp, step, period, etc.)
+- account: primary entity identifier (sender, account_id, user_id, employee, data_subject, etc.)
+- recipient: secondary entity identifier (receiver, recipient, destination, etc.)
+- type: category/classification column (transaction_type, event_type, category, etc.)
+
+IMPORTANT:
+- Only map fields you are confident about. Do NOT force-map every column.
+- If no column matches a standard field, omit it from mappings.
+- This dataset may be financial (AML), privacy (GDPR), security (SOC2), or any other compliance domain.
+- Set dataset_type to GENERIC unless the headers clearly match IBM_AML or PAYSIM schemas.
+- Set suggested_scale to 1.0 unless you recognize a specific temporal scale.`,
+                    prompt: `Map these CSV headers to the standard schema where applicable.\n\nHeaders: ${headers.join(', ')}\n\nSample data (first 3 rows):\n${JSON.stringify(rows.slice(0, 3), null, 2)}`,
                 });
 
                 finalMapping = {};
@@ -93,9 +107,32 @@ export async function POST(request: NextRequest) {
         // Per hard rules: Agent 6 (Clarification Questions) — if Gemini fails return [] silently
         // We skip calling Gemini for clarification in MVP to save API rate limits
 
-        // Store upload in memory
+        // Store upload in memory with basic metadata for ML scoring
         const uploadId = uuid();
-        uploadStore.set(uploadId, { rows, headers, fileName: file.name });
+        
+        // Calculate basic metadata
+        const metadata = {
+            totalRows: rows.length,
+            columnStats: {} as any
+        };
+
+        headers.forEach(h => {
+            const values = rows.map(r => r[h]).filter(v => v !== null && v !== undefined);
+            const isNumeric = values.every(v => typeof v === 'number');
+            const uniqueValues = new Set(values);
+            
+            metadata.columnStats[h] = {
+                type: isNumeric ? 'numeric' : 'categorical',
+                cardinality: uniqueValues.size,
+                ...(isNumeric && values.length > 0 ? {
+                    min: Math.min(...values as number[]),
+                    max: Math.max(...values as number[]),
+                    mean: (values as number[]).reduce((a, b) => a + b, 0) / values.length
+                } : {})
+            };
+        });
+
+        uploadStore.set(uploadId, { rows, headers, fileName: file.name, metadata });
 
         // Response per CONTRACTS.md
         return NextResponse.json({
@@ -108,6 +145,7 @@ export async function POST(request: NextRequest) {
             mapping_confidence: mappingConfidence,
             temporal_scale: temporalScale,
             clarification_questions: clarificationQuestions,
+            metadata: metadata // Included for internal verification
         });
 
     } catch (err) {
