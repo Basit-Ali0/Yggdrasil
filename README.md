@@ -226,18 +226,168 @@ npm start
 
 ---
 
-## Database Setup
+## Database Schema
 
-Yggdrasil uses Supabase PostgreSQL with Row-Level Security. Key tables:
+Yggdrasil uses Supabase PostgreSQL with Row-Level Security. All tables are filtered by `auth.uid()` via RLS policies — each user only sees their own data.
 
-| Table | Purpose |
-|---|---|
-| `policies` | Policy metadata (name, type, rule count) |
-| `rules` | Extracted rules (conditions, thresholds, severity, policy excerpts) |
-| `scans` | Scan records (config, status, compliance score) |
-| `violations` | Detected violations (evidence, explanation, review status) |
+### Relationships
 
-All tables are filtered by `auth.uid()` via RLS policies. Each user only sees their own data.
+```
+auth.users
+    └── policies (user_id)
+        └── rules (policy_id)
+    └── scans (user_id, policy_id)
+        ├── violations (scan_id)
+        └── pii_findings (scan_id)
+```
+
+### `policies`
+
+Stores policy metadata. One policy per audit, linked to extracted rules.
+
+| Column | Type | Description |
+|---|---|---|
+| `id` | UUID, PK | |
+| `user_id` | UUID, FK | Owner (from `auth.uid()`) |
+| `name` | text | Policy name (e.g., "GDPR Compliance") |
+| `type` | text | `'prebuilt'` or `'custom_pdf'` |
+| `prebuilt_type` | text | `'aml'`, `'gdpr'`, `'soc2'` for prebuilt policies |
+| `rules_count` | integer | Total rules in policy |
+| `status` | text | `'active'` |
+| `created_at` | timestamptz | |
+| `updated_at` | timestamptz | Used for dirty detection (policy changed since last scan) |
+
+### `rules`
+
+Extracted compliance rules with compound condition logic and Bayesian feedback counters.
+
+| Column | Type | Description |
+|---|---|---|
+| `id` | UUID, PK | |
+| `policy_id` | UUID, FK | Parent policy |
+| `rule_id` | text | Unique ID within policy (e.g., `'aml_rule_1'`) |
+| `name` | text | Human-readable name |
+| `type` | text | Execution type: `'single_transaction'`, `'aggregation'`, `'velocity'`, `'structuring'`, `'dormant_reactivation'`, `'round_amount'` |
+| `severity` | text | `'CRITICAL'`, `'HIGH'`, `'MEDIUM'` |
+| `threshold` | numeric | Rule threshold value |
+| `time_window` | integer | Time window in hours (windowed rules) |
+| `conditions` | jsonb | Compound boolean logic tree (`AND`/`OR` with leaf conditions) |
+| `policy_excerpt` | text | Quote from regulatory document |
+| `policy_section` | text | Section reference |
+| `description` | text | JSON string with rule text + optional `historical_context` |
+| `is_active` | boolean | Whether rule fires during scans |
+| `approved_count` | integer | User-confirmed true positives (Bayesian feedback) |
+| `false_positive_count` | integer | User-dismissed false positives (Bayesian feedback) |
+| `created_at` | timestamptz | |
+
+**Conditions JSONB example:**
+```json
+{
+  "AND": [
+    { "field": "amount", "operator": ">=", "value": 10000 },
+    { "field": "transaction_type", "operator": "IN", "value": ["DEBIT", "WIRE"] }
+  ]
+}
+```
+
+### `scans`
+
+Scan execution records with compliance scores and score history for trend tracking.
+
+| Column | Type | Description |
+|---|---|---|
+| `id` | UUID, PK | |
+| `user_id` | UUID, FK | |
+| `policy_id` | UUID, FK | Policy scanned against |
+| `temporal_scale` | numeric | Time scaling factor (`1.0` or `24.0`) |
+| `mapping_config` | jsonb | Column mappings (CSV column → schema field) |
+| `data_source` | text | `'csv'` |
+| `file_name` | text | Original uploaded file name |
+| `record_count` | integer | Rows scanned (capped at 50K) |
+| `violation_count` | integer | True violation count (pre-cap) |
+| `compliance_score` | numeric | Score 0–100 |
+| `status` | text | `'pending'`, `'running'`, `'completed'`, `'failed'` |
+| `created_at` | timestamptz | |
+| `completed_at` | timestamptz | |
+| `upload_id` | UUID | Reference to in-memory upload store |
+| `mapping_id` | UUID | Reference to in-memory mapping store |
+| `audit_id` | UUID | Logical audit session |
+| `audit_name` | text | User-provided audit name |
+| `score_history` | jsonb | Array of `{ score, timestamp, action, violation_id }` for compliance trend chart |
+
+**Score history JSONB example:**
+```json
+[
+  { "score": 85.2, "timestamp": "2026-02-22T10:00:00Z", "action": "scan_completed", "violation_id": null },
+  { "score": 87.1, "timestamp": "2026-02-22T10:05:00Z", "action": "false_positive", "violation_id": "abc-123" }
+]
+```
+
+### `violations`
+
+Detected compliance violations with evidence, explanations, and review status.
+
+| Column | Type | Description |
+|---|---|---|
+| `id` | UUID, PK | |
+| `scan_id` | UUID, FK | Parent scan |
+| `rule_id` | text | Violated rule ID |
+| `rule_name` | text | Rule name |
+| `severity` | text | `'CRITICAL'`, `'HIGH'`, `'MEDIUM'` |
+| `record_id` | text | Row ID from source data |
+| `account` | text | Account/entity identifier |
+| `amount` | numeric | Transaction amount |
+| `transaction_type` | text | Transaction type |
+| `evidence` | jsonb | Matched field values from the record |
+| `threshold` | numeric | Rule threshold breached |
+| `actual_value` | numeric | Actual value that triggered violation |
+| `policy_excerpt` | text | Policy clause violated |
+| `policy_section` | text | Policy section reference |
+| `explanation` | text | Deterministic explanation (template-generated) |
+| `status` | text | `'pending'`, `'approved'`, `'false_positive'` |
+| `review_note` | text | Reviewer comments |
+| `reviewed_by` | UUID | Reviewer user ID |
+| `reviewed_at` | timestamptz | |
+| `created_at` | timestamptz | |
+
+### `pii_findings`
+
+PII detection results from uploaded datasets. Initially stored with `upload_id` only, then linked to `scan_id` after scan completes.
+
+| Column | Type | Description |
+|---|---|---|
+| `id` | UUID, PK | |
+| `scan_id` | UUID, FK, nullable | Linked after scan creation |
+| `upload_id` | UUID | Upload that was scanned for PII |
+| `column_name` | text | Column containing PII |
+| `pii_type` | text | `'email'`, `'phone'`, `'ssn'`, `'name'`, `'address'`, `'credit_card'`, etc. |
+| `severity` | text | `'CRITICAL'`, `'HIGH'`, `'MEDIUM'` |
+| `confidence` | numeric | Detection confidence (0–1) |
+| `match_count` | integer | Rows with potential PII |
+| `total_rows` | integer | Total rows analyzed |
+| `sample_values` | jsonb | Masked sample values |
+| `detection_query` | text | Regex pattern used |
+| `violation_text` | text | PII risk description |
+| `suggestion` | text | Remediation: `'hash'`, `'encrypt'`, `'remove'` |
+| `status` | text | `'open'`, `'resolved'`, `'ignored'` |
+| `created_at` | timestamptz | |
+| `resolved_at` | timestamptz | |
+| `resolved_by` | UUID | |
+
+### RPC Functions
+
+```sql
+-- Bayesian feedback: atomically increment rule precision counters
+increment_rule_stat(target_policy_id UUID, target_rule_id TEXT, stat_column TEXT) → VOID
+```
+
+### Design Rationale
+
+- **JSONB for conditions:** Rules support arbitrarily nested AND/OR logic trees. JSONB allows flexible schema without join overhead.
+- **Score history on scans:** Tracking per-review score changes enables compliance trend visualization without a separate table.
+- **Bayesian counters on rules:** `approved_count` and `false_positive_count` enable the precision formula `(1 + TP) / (2 + TP + FP)` that improves rule confidence over time.
+- **PII findings linked by upload_id:** PII detection runs at upload time (before a scan exists), so findings are initially stored by `upload_id` and linked to `scan_id` after scan completion.
+- **In-memory upload/mapping stores:** CSV data and column mappings are kept in server memory during the audit flow, not persisted to the database. Only the final scan results are stored.
 
 ---
 
