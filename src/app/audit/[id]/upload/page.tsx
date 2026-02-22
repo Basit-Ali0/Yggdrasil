@@ -7,11 +7,11 @@ import { usePIIStore } from '@/stores/pii-store';
 import { FileDropzone } from '@/components/ui-custom/file-dropzone';
 import { PIIAlertDialog } from '@/components/pii-alert-dialog';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { ArrowRight, Database, FileText, AlertCircle, Loader2, ShieldAlert } from 'lucide-react';
+import { ArrowRight, AlertCircle, Loader2, ShieldAlert } from 'lucide-react';
 
 export default function DataUploadPage() {
     const router = useRouter();
@@ -69,38 +69,6 @@ export default function DataUploadPage() {
                 label="Drop your CSV file here"
                 description="Supports CSV files up to 50MB"
             />
-
-            {/* Dataset Info */}
-            <div className="grid gap-4 sm:grid-cols-2">
-                <Card>
-                    <CardHeader className="pb-2">
-                        <CardTitle className="flex items-center gap-2 text-base">
-                            <Database className="h-4 w-4 text-primary" />
-                            Recommended Dataset
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <CardDescription>
-                            <strong>IBM AML</strong> — Synthetic financial data with ground truth
-                            labels for anti-money laundering detection.
-                        </CardDescription>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader className="pb-2">
-                        <CardTitle className="flex items-center gap-2 text-base">
-                            <FileText className="h-4 w-4 text-muted-foreground" />
-                            Also Supported
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <CardDescription>
-                            PaySim, Custom CSV — Any CSV with transaction data
-                        </CardDescription>
-                    </CardContent>
-                </Card>
-            </div>
-
             {/* Upload Success */}
             {uploadData && (
                 <div className="space-y-4 animate-fade-in-up">
