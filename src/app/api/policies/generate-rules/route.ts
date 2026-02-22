@@ -10,6 +10,7 @@ import { v4 as uuid } from 'uuid';
 import { z } from 'zod';
 
 // Zod schema for extracted rules — matches LLMSystemPrompts.md
+// Conditions can be simple { field, operator, value } or compound { AND: [...] } / { OR: [...] }
 const ExtractedRuleSchema = z.object({
     rule_id: z.string(),
     name: z.string(),
@@ -18,11 +19,7 @@ const ExtractedRuleSchema = z.object({
     severity: z.enum(['CRITICAL', 'HIGH', 'MEDIUM']),
     threshold: z.number().nullable().optional(),
     time_window: z.number().nullable().optional(),
-    conditions: z.object({
-        field: z.string(),
-        operator: z.string(),
-        value: z.any(),
-    }),
+    conditions: z.any(),
     policy_excerpt: z.string(),
     policy_section: z.string().optional(),
     requires_clarification: z.boolean().optional(),
@@ -89,11 +86,15 @@ For every rule you identify:
 
 ### 📋 JSON SCHEMA REQUIREMENTS
 
-- rule_id: UPPER_SNAKE_CASE.
+- rule_id: UPPER_SNAKE_CASE (e.g., DATA_RETENTION_VIOLATION, MFA_REQUIRED).
+- type: A descriptive category for the rule (e.g., "retention", "encryption", "access_control", "consent", "single_transaction"). Use any descriptive string — the engine routes unknown types to single-record evaluation.
 - severity: Based on specificity (3.0+ = CRITICAL, 2.0-3.0 = HIGH, < 2.0 = MEDIUM).
-- conditions: Use recursive { AND: [...] } or { OR: [...] }.
-- value_type: Use "field" for cross-field comparison, or "literal".
-- policy_excerpt: Exact sentence justifying the rule.
+- conditions: Use recursive { AND: [...] } or { OR: [...] } to combine multiple conditions. Each leaf condition: { field: "<csv_column_name>", operator: "<op>", value: <expected> }.
+- SUPPORTED OPERATORS: "equals", "not_equals", "greater_than", "less_than", "greater_than_or_equal", "less_than_or_equal", "contains", "exists", "not_exists", "IN", "BETWEEN", "MATCH" (regex).
+- value_type: Use "field" for cross-field comparison (value references another column), or "literal" (default).
+- value types: Use booleans (true/false) for boolean fields, numbers for numeric fields, strings for text fields. The engine handles type coercion from CSV strings automatically.
+- policy_excerpt: Exact sentence from the policy justifying the rule.
+- threshold: Only set for numeric threshold rules (e.g., amount > 10000). Leave null for boolean/state-check rules.
 
 Return ONLY a valid JSON array matching the ExtractionResultSchema.`;
 
