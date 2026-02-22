@@ -22,7 +22,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ShieldAlert, AlertTriangle, Users, ChevronDown, ArrowRight, Settings2, RefreshCw } from 'lucide-react';
+import { toast } from 'sonner';
+import { ShieldAlert, AlertTriangle, Users, ChevronDown, ArrowRight, Settings2, RefreshCw, X, Check } from 'lucide-react';
 import type { ViolationCase, ScanStatusResponse } from '@/lib/contracts';
 
 // -- Aggregation types --
@@ -51,6 +52,10 @@ function buildAggregation(cases: ViolationCase[]): SeverityGroup[] {
 
     for (const c of cases) {
         for (const v of c.violations) {
+            // Only aggregate pending or approved violations for the summary
+            // This reduces "spam" from false positives
+            if (v.status === 'false_positive') continue;
+
             const sev = v.severity;
             const rule = v.rule_id;
             const account = c.account_id;
@@ -306,18 +311,51 @@ export default function DashboardPage() {
                                                     <CollapsibleContent>
                                                         <div className="ml-8 mt-1 space-y-1">
                                                             {ruleGroup.accounts.map((acc) => (
-                                                                <button
-                                                                    key={acc.account_id}
-                                                                    className="flex w-full items-center justify-between rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted/50"
-                                                                    onClick={() => acc.violation_ids[0] && handleViolationClick(acc.violation_ids[0])}
-                                                                >
-                                                                    <span className="font-mono-code">
-                                                                        {acc.account_id}
-                                                                    </span>
-                                                                    <span className="font-mono-code">
-                                                                        ${acc.total_amount.toLocaleString()}
-                                                                    </span>
-                                                                </button>
+                                                                <div key={acc.account_id} className="group flex items-center gap-2">
+                                                                    <button
+                                                                        className="flex flex-1 items-center justify-between rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted/50"
+                                                                        onClick={() => acc.violation_ids[0] && handleViolationClick(acc.violation_ids[0])}
+                                                                    >
+                                                                        <span className="font-mono-code">
+                                                                            {acc.account_id}
+                                                                        </span>
+                                                                        <span className="font-mono-code">
+                                                                            {acc.total_amount > 0 ? `$${acc.total_amount.toLocaleString()}` : '—'}
+                                                                        </span>
+                                                                    </button>
+                                                                    <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="icon"
+                                                                            className="h-7 w-7 text-muted-foreground hover:text-ruby"
+                                                                            title="Mark as False Positive"
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                if (acc.violation_ids[0]) {
+                                                                                    useViolationStore.getState().reviewViolation(acc.violation_ids[0], { status: 'false_positive' });
+                                                                                    toast.success('Marked as false positive');
+                                                                                }
+                                                                            }}
+                                                                        >
+                                                                            <X className="h-3.5 w-3.5" />
+                                                                        </Button>
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="icon"
+                                                                            className="h-7 w-7 text-muted-foreground hover:text-emerald"
+                                                                            title="Confirm Violation"
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                if (acc.violation_ids[0]) {
+                                                                                    useViolationStore.getState().reviewViolation(acc.violation_ids[0], { status: 'approved' });
+                                                                                    toast.success('Violation confirmed');
+                                                                                }
+                                                                            }}
+                                                                        >
+                                                                            <Check className="h-3.5 w-3.5" />
+                                                                        </Button>
+                                                                    </div>
+                                                                </div>
                                                             ))}
                                                         </div>
                                                     </CollapsibleContent>
