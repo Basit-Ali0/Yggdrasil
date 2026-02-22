@@ -69,6 +69,13 @@ export interface ScanStatusResponse {
     created_at: string;
     completed_at: string | null;
     audit_name?: string;
+    score_history?: Array<{
+        score: number;
+        timestamp: string;
+        action: string;
+        violation_id?: string | null;
+    }>;
+    record_count?: number;
     // Rescan fields
     policy_id?: string;
     upload_id?: string;
