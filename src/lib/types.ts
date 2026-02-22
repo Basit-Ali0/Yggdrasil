@@ -34,7 +34,7 @@ export interface Rule {
     severity: 'CRITICAL' | 'HIGH' | 'MEDIUM';
     threshold: number | null;
     time_window: number | null; // hours
-    conditions: RuleConditions;
+    conditions: RuleConditions | null;
     policy_excerpt: string;
     policy_section: string;
     is_active: boolean;
@@ -163,5 +163,4 @@ export const WINDOWED_RULE_TYPES = [
     'sub_threshold_velocity',
     'dormant_reactivation',
     'round_amount',
-    'behavioral',
 ] as const;

@@ -5,7 +5,7 @@
  * Flags rules that are likely to cause high false positives.
  */
 
-import type { Rule } from '../types';
+import type { Rule, RuleConditions, RuleCondition, CompoundCondition } from '../types';
 
 export interface RuleQualityResult {
     valid: boolean;
@@ -14,12 +14,17 @@ export interface RuleQualityResult {
     suggestions: string[];
 }
 
-// Transaction types that are commonly associated with fraud
-const HIGH_RISK_TYPES = ['CASH_OUT', 'TRANSFER', 'WIRE'];
-const LOW_RISK_TYPES = ['PAYMENT', 'DEBIT', 'CASH_IN', 'DEPOSIT'];
-
 // Minimum conditions for a quality rule
 const MIN_CONDITIONS = 2;
+
+// ── Type guards for RuleConditions union ────────────────────
+function isCompoundCondition(c: RuleConditions): c is CompoundCondition {
+    return 'AND' in c || 'OR' in c;
+}
+
+function isSimpleCondition(c: RuleConditions): c is RuleCondition {
+    return 'field' in c;
+}
 
 export function validateRuleQuality(rule: Rule): RuleQualityResult {
     const warnings: string[] = [];
@@ -31,12 +36,11 @@ export function validateRuleQuality(rule: Rule): RuleQualityResult {
     
     // Also check if type is in conditions
     if (!hasTypeCondition && rule.conditions) {
-        if ('AND' in rule.conditions && Array.isArray(rule.conditions.AND)) {
-            hasTypeCondition = (rule.conditions.AND as any[]).some(c => c.field === 'type');
-        } else if ('OR' in rule.conditions && Array.isArray(rule.conditions.OR)) {
-            hasTypeCondition = (rule.conditions.OR as any[]).some(c => c.field === 'type');
-        } else if ('field' in (rule.conditions as any)) {
-            hasTypeCondition = (rule.conditions as any).field === 'type';
+        if (isCompoundCondition(rule.conditions)) {
+            const children = rule.conditions.AND ?? rule.conditions.OR ?? [];
+            hasTypeCondition = children.some(c => isSimpleCondition(c) && c.field === 'type');
+        } else if (isSimpleCondition(rule.conditions)) {
+            hasTypeCondition = rule.conditions.field === 'type';
         }
     }
     
@@ -105,12 +109,10 @@ function countConditions(rule: Rule): number {
 
     // Explicit conditions
     if (rule.conditions) {
-        // Check if compound condition
-        if ('AND' in rule.conditions && Array.isArray(rule.conditions.AND)) {
-            count += rule.conditions.AND.length;
-        } else if ('OR' in rule.conditions && Array.isArray(rule.conditions.OR)) {
-            count += rule.conditions.OR.length;
-        } else if ('field' in rule.conditions) {
+        if (isCompoundCondition(rule.conditions)) {
+            const children = rule.conditions.AND ?? rule.conditions.OR ?? [];
+            count += children.length;
+        } else if (isSimpleCondition(rule.conditions)) {
             count++;
         }
     }
@@ -147,16 +149,14 @@ function hasAccountBehaviorCondition(rule: Rule): boolean {
     ];
 
     // Check compound conditions
-    if ('AND' in rule.conditions && Array.isArray(rule.conditions.AND)) {
-        return (rule.conditions.AND as any[]).some(c => behaviorFields.includes(c.field));
+    if (isCompoundCondition(rule.conditions)) {
+        const children = rule.conditions.AND ?? rule.conditions.OR ?? [];
+        return children.some(c => isSimpleCondition(c) && behaviorFields.includes(c.field));
     }
-    if ('OR' in rule.conditions && Array.isArray(rule.conditions.OR)) {
-        return (rule.conditions.OR as any[]).some(c => behaviorFields.includes(c.field));
-    }
-    
+
     // Check simple condition
-    if ('field' in (rule.conditions as any)) {
-        return behaviorFields.includes((rule.conditions as any).field);
+    if (isSimpleCondition(rule.conditions)) {
+        return behaviorFields.includes(rule.conditions.field);
     }
     
     return false;

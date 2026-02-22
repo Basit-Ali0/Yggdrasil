@@ -1,6 +1,6 @@
 // ============================================================
 // InMemoryBackend — Deterministic rule enforcement
-// All 11 AML rules from enforcement-spec.md
+// Supports AML, GDPR, SOC2, and custom PDF-extracted rules
 // Hour-0 Bug #1: ROUND_AMOUNT uses (x % 1000) === 0
 // Hour-0 Bug #3: Pre-filter records to amount >= 8000
 // Routes windowed rules by rule.type (NOT rule.timeWindow)
@@ -30,6 +30,7 @@ export interface ViolationResult {
     policy_section: string;
     explanation: string;
     status: 'pending';
+    confidence?: number;
 }
 
 /**
@@ -48,6 +49,38 @@ function preFilterForSubThreshold(records: NormalizedRecord[]): NormalizedRecord
  */
 function isRoundAmount(x: number): boolean {
     return x % 1000 === 0;
+}
+
+/**
+ * Coerce equality comparison for CSV string values vs typed rule values.
+ * CSV always produces strings; rules define booleans/numbers.
+ * "false" should equal false, "16" should equal 16, etc.
+ */
+function coerceEquals(left: any, right: any): boolean {
+    // Same type — direct comparison
+    if (typeof left === typeof right) return left === right;
+
+    // Rule value is boolean, CSV value is string
+    if (typeof right === 'boolean' && typeof left === 'string') {
+        return (left.toLowerCase() === 'true') === right;
+    }
+
+    // Rule value is number, CSV value is string
+    if (typeof right === 'number' && typeof left === 'string') {
+        return parseFloat(left) === right;
+    }
+
+    // Rule value is string, CSV value is number/boolean
+    if (typeof left === 'boolean' && typeof right === 'string') {
+        return left === (right.toLowerCase() === 'true');
+    }
+    if (typeof left === 'number' && typeof right === 'string') {
+        return left === parseFloat(right);
+    }
+
+    // Fallback: loose equality
+    // eslint-disable-next-line eqeqeq
+    return left == right;
 }
 
 export class InMemoryBackend {
@@ -117,6 +150,14 @@ export class InMemoryBackend {
         const leftValue = record[cond.field];
         let rightValue = cond.value;
 
+        // Handle existence operators BEFORE null check — they test for field presence/absence
+        if (cond.operator === 'exists') {
+            return leftValue !== undefined && leftValue !== null && leftValue !== '';
+        }
+        if (cond.operator === 'not_exists') {
+            return leftValue === undefined || leftValue === null || leftValue === '';
+        }
+
         // SANITY CHECK: If field is missing or undefined, don't match (prevents massive false positives)
         if (leftValue === undefined || leftValue === null) {
             return false;
@@ -129,20 +170,31 @@ export class InMemoryBackend {
         }
 
         switch (cond.operator) {
+            // Numeric comparisons — parseFloat handles CSV string values
             case '>=':
-                return (leftValue as number) >= (rightValue as number);
+            case 'greater_than_or_equal':
+                return parseFloat(leftValue) >= parseFloat(rightValue);
             case '>':
-                return (leftValue as number) > (rightValue as number);
+            case 'greater_than':
+                return parseFloat(leftValue) > parseFloat(rightValue);
             case '<=':
-                return (leftValue as number) <= (rightValue as number);
+            case 'less_than_or_equal':
+                return parseFloat(leftValue) <= parseFloat(rightValue);
             case '<':
-                return (leftValue as number) < (rightValue as number);
+            case 'less_than':
+                return parseFloat(leftValue) < parseFloat(rightValue);
+
+            // Equality — with type coercion for CSV string values
             case '==':
             case 'EQ':
-                return leftValue === rightValue;
+            case 'equals':
+                return coerceEquals(leftValue, rightValue);
             case '!=':
             case 'NEQ':
-                return leftValue !== rightValue;
+            case 'not_equals':
+                return !coerceEquals(leftValue, rightValue);
+
+            // Set membership
             case 'IN':
                 return Array.isArray(rightValue) && rightValue.includes(leftValue);
             case 'BETWEEN':
@@ -151,13 +203,22 @@ export class InMemoryBackend {
                     (leftValue as number) >= rightValue[0] &&
                     (leftValue as number) <= rightValue[1]
                 );
+
+            // String matching
             case 'MATCH':
             case 'REGEX':
                 if (typeof leftValue === 'string' && typeof rightValue === 'string') {
                     return new RegExp(rightValue).test(leftValue);
                 }
                 return false;
+            case 'contains':
+                if (typeof leftValue === 'string' && typeof rightValue === 'string') {
+                    return leftValue.toLowerCase().includes(rightValue.toLowerCase());
+                }
+                return false;
+
             default:
+                console.warn(`[ENGINE] Unknown operator: '${cond.operator}' in rule condition for field '${cond.field}'`);
                 return false;
         }
     }
@@ -267,8 +328,8 @@ export class InMemoryBackend {
             if (aggFunc === 'sum') actualValue = values.reduce((a, b) => a + b, 0);
             else if (aggFunc === 'count') actualValue = values.length;
             else if (aggFunc === 'avg') actualValue = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
-            else if (aggFunc === 'max') actualValue = Math.max(...values);
-            else if (aggFunc === 'min') actualValue = Math.min(...values);
+            else if (aggFunc === 'max') actualValue = values.length > 0 ? Math.max(...values) : 0;
+            else if (aggFunc === 'min') actualValue = values.length > 0 ? Math.min(...values) : 0;
 
             // Special case for legacy CTR Aggregation
             const isLegacyCtr = rule.rule_id === 'CTR_AGGREGATION' && txns.length > 1;
@@ -420,10 +481,67 @@ export class InMemoryBackend {
 
     // ── Violation Builders ─────────────────────────────────────
 
+    /**
+     * Extract the primary condition match from a rule for display purposes.
+     * For financial rules with thresholds, returns threshold vs amount.
+     * For condition-based rules (GDPR/SOC2), returns the first leaf condition's
+     * expected value vs the actual record value.
+     */
+    private extractConditionMatch(
+        rule: Rule,
+        record: NormalizedRecord
+    ): { threshold: number; actual_value: number; condition_summary?: string } {
+        // If rule has an explicit numeric threshold, use financial comparison
+        if (rule.threshold != null && rule.threshold > 0) {
+            return { threshold: rule.threshold, actual_value: record.amount };
+        }
+
+        // For condition-based rules, extract the first leaf condition for display
+        const cond = rule.conditions;
+        if (cond) {
+            const leaf = this.findFirstLeafCondition(cond);
+            if (leaf) {
+                const actualVal = record[leaf.field];
+                const expectedVal = leaf.value;
+                // Build a human-readable summary depending on operator type
+                let summary: string;
+                if (leaf.operator === 'exists') {
+                    summary = `${leaf.field} is present (value: ${JSON.stringify(actualVal)})`;
+                } else if (leaf.operator === 'not_exists') {
+                    summary = `${leaf.field} is missing or empty`;
+                } else {
+                    summary = `${leaf.field} ${leaf.operator} ${JSON.stringify(expectedVal)} (actual: ${JSON.stringify(actualVal)})`;
+                }
+                // Store as numbers if possible, otherwise use 0 placeholders —
+                // the evidence drawer will use condition_summary for display
+                return {
+                    threshold: typeof expectedVal === 'number' ? expectedVal : 0,
+                    actual_value: typeof actualVal === 'number' ? actualVal : 0,
+                    condition_summary: summary,
+                };
+            }
+        }
+
+        return { threshold: 0, actual_value: record.amount };
+    }
+
+    private findFirstLeafCondition(cond: any): { field: string; operator: string; value: any } | null {
+        if ('field' in cond) return cond;
+        if ('AND' in cond && Array.isArray(cond.AND) && cond.AND.length > 0) {
+            return this.findFirstLeafCondition(cond.AND[0]);
+        }
+        if ('OR' in cond && Array.isArray(cond.OR) && cond.OR.length > 0) {
+            return this.findFirstLeafCondition(cond.OR[0]);
+        }
+        return null;
+    }
+
     private createViolation(
         rule: Rule,
         record: NormalizedRecord
     ): ViolationResult {
+        const match = this.extractConditionMatch(rule, record);
+
         return {
             id: uuid(),
             rule_id: rule.rule_id,
@@ -433,9 +551,12 @@ export class InMemoryBackend {
             account: record.account,
             amount: record.amount,
             transaction_type: record.type,
-            evidence: { ...record },
-            threshold: rule.threshold ?? 0,
-            actual_value: record.amount,
+            evidence: {
+                ...record,
+                ...(match.condition_summary ? { condition_summary: match.condition_summary } : {}),
+            },
+            threshold: match.threshold,
+            actual_value: match.actual_value,
             policy_excerpt: rule.policy_excerpt,
             policy_section: rule.policy_section ?? '',
             explanation: generateExplanation(rule, record),
