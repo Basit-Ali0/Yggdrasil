@@ -10,40 +10,51 @@ import { DatasetMetadata } from '../upload-store';
 
 /**
  * Map Gemini-extracted rule IDs/types to engine-recognized IDs/types.
- * Uses generic patterns to categorize rules without domain-specific hardcoding.
+ * Only normalizes rules with unknown/empty types. Prebuilt rules
+ * (GDPR, SOC2, AML) already have correct types and must NOT be
+ * reclassified by keyword matching.
  */
 function normalizeRuleForEngine(rule: Rule): Rule {
+    // If the rule already has a type recognized by the engine, keep it.
+    // WINDOWED_RULE_TYPES are handled by executeWindowed; everything
+    // else routes to executeSingleTx which checks conditions generically.
+    // Only normalize rules with empty/null type.
+    if (rule.type) {
+        return rule;
+    }
+
     const id = (rule.rule_id || '').toUpperCase();
     const desc = (rule.description || '').toLowerCase();
     const name = (rule.name || '').toLowerCase();
     const combined = `${id} ${desc} ${name}`;
 
-    // Generic categorization based on signal types
-    
-    // 1. Single Transaction Thresholds
+    // Keyword-based categorization for LLM-extracted rules without a type
+    // Priority: velocity > aggregation > threshold > behavioral
+
+    // 1. Temporal / Velocity Patterns
+    if (combined.includes('velocity') || combined.includes('rapid') || combined.includes('frequency')) {
+        return { ...rule, type: 'velocity' };
+    }
+
+    // 2. Aggregations
+    if (combined.includes('aggregate') || combined.includes('sum') || combined.includes('total')) {
+        return { ...rule, type: 'aggregation' };
+    }
+
+    // 3. Single Transaction Thresholds
     if (combined.includes('threshold') || combined.includes('limit') || combined.includes('exceed')) {
         if (!rule.time_window) {
             return { ...rule, type: 'single_transaction' };
         }
     }
 
-    // 2. Temporal / Velocity Patterns
-    if (combined.includes('velocity') || combined.includes('rapid') || combined.includes('frequency') || combined.includes('within')) {
-        return { ...rule, type: 'velocity' };
-    }
-
-    // 3. Behavioral Anomalies
-    if (combined.includes('anomaly') || combined.includes('unusual') || combined.includes('pattern') || combined.includes('change')) {
+    // 4. Behavioral Anomalies
+    if (combined.includes('anomaly') || combined.includes('unusual')) {
         return { ...rule, type: 'behavioral' };
     }
 
-    // 4. Aggregations
-    if (combined.includes('aggregate') || combined.includes('sum') || combined.includes('total')) {
-        return { ...rule, type: 'aggregation' };
-    }
-
-    // Default to provided type or single_transaction
-    return { ...rule, type: rule.type || 'single_transaction' };
+    // Default to single_transaction
+    return { ...rule, type: 'single_transaction' };
 }
 
 /**
@@ -171,8 +182,8 @@ export class RuleExecutor {
         console.log(`[EXECUTOR] Scan complete. Total violations found: ${violations.length}`);
 
         // Step 5: Rank by confidence
-        const rankedViolations = violations.sort((a, b) => 
-            ((b as any).confidence || 0) - ((a as any).confidence || 0)
+        const rankedViolations = violations.sort((a, b) =>
+            (b.confidence || 0) - (a.confidence || 0)
         );
 
         return {
