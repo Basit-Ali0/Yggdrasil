@@ -25,8 +25,22 @@ export function PIIDashboardCard({ scanId }: PIIDashboardCardProps) {
         (f) => f.status !== 'resolved' && f.status !== 'ignored',
     );
 
-    if (isLoading || openFindings.length === 0) {
+    if (isLoading) {
         return null;
+    }
+
+    if (openFindings.length === 0) {
+        return (
+            <Card className="border-border/50">
+                <CardContent className="flex flex-col items-center justify-center py-8 text-center">
+                    <ShieldAlert className="h-8 w-8 text-emerald mb-2" />
+                    <p className="text-sm font-medium">No PII Detected</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                        No personally identifiable information was found in this dataset.
+                    </p>
+                </CardContent>
+            </Card>
+        );
     }
 
     const criticalCount = openFindings.filter((f) => f.severity === 'CRITICAL').length;
