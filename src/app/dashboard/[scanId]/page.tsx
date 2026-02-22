@@ -18,6 +18,7 @@ import { EvidenceDrawer } from '@/components/evidence-drawer';
 import { PolicyUpdateSheet } from '@/components/policy-update-sheet';
 import { RescanDialog } from '@/components/rescan-dialog';
 import { PIIDashboardCard } from '@/components/pii-dashboard-card';
+import { ScoreHistoryChart } from '@/components/ui-custom/score-history-chart';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Badge } from '@/components/ui/badge';
@@ -224,6 +225,11 @@ export default function DashboardPage() {
                         totalViolations={totalViolations}
                         criticalCount={criticalCount}
                         highCount={highCount}
+                        mediumCount={scoreDetails?.by_severity?.MEDIUM ?? 0}
+                        falsePositiveCount={scoreDetails?.false_positives ?? 0}
+                        accountsFlagged={totalCases}
+                        recordCount={currentScan?.record_count}
+                        auditName={auditName}
                     />
                 </div>
             </div>
@@ -252,10 +258,10 @@ export default function DashboardPage() {
                 />
             </div>
 
-            {/* PII Alerts */}
-            <PIIDashboardCard scanId={scanId} />
-
-            {/* Aggregated Violations */}
+            {/* Main Content: Violations (left) + Sidebar (right) */}
+            <div className="grid gap-6 lg:grid-cols-3">
+            {/* Left Column: Violations */}
+            <div className="lg:col-span-2 space-y-6">
             <Card>
                 <CardHeader className="pb-3">
                     <CardTitle className="flex items-center justify-between text-base">
@@ -369,6 +375,18 @@ export default function DashboardPage() {
                     )}
                 </CardContent>
             </Card>
+            </div>
+
+            {/* Right Column: Chart + PII */}
+            <div className="space-y-6">
+                <ScoreHistoryChart
+                    scoreHistory={currentScan?.score_history ?? []}
+                    initialScore={complianceScore}
+                    completedAt={currentScan?.completed_at}
+                />
+                <PIIDashboardCard scanId={scanId} />
+            </div>
+            </div>
 
             {/* Evidence Drawer */}
             <EvidenceDrawer
