@@ -136,7 +136,10 @@ export class RuleExecutor {
         const activeRules = rules.filter((r) => r.is_active);
         let rulesProcessed = 0;
 
+        console.log(`[EXECUTOR] Starting scan with ${activeRules.length} active rules against ${sampled.length} rows`);
+
         for (const rule of activeRules) {
+            console.log(`[EXECUTOR] Running rule: ${rule.rule_id} (${rule.name})`);
             const engineRule = normalizeRuleForEngine(rule);
             const ruleViolations = this.backend.execute(
                 engineRule,
@@ -144,8 +147,19 @@ export class RuleExecutor {
                 config.temporalScale
             );
             
+            // NOISE GATE: Cap violations per rule to prevent system overload
+            const VIOLATION_CAP = 1000;
+            let finalRuleViolations = ruleViolations;
+            
+            if (ruleViolations.length > VIOLATION_CAP) {
+                console.warn(`[EXECUTOR] Rule ${rule.rule_id} is too noisy (${ruleViolations.length} hits). Capping at ${VIOLATION_CAP}.`);
+                finalRuleViolations = ruleViolations.slice(0, VIOLATION_CAP);
+            }
+
+            console.log(`[EXECUTOR] Rule ${rule.rule_id} found ${ruleViolations.length} violations (recorded ${finalRuleViolations.length})`);
+
             // Step 4: Scoring Layer (ML-Inspired)
-            const scoredViolations = ruleViolations.map(v => ({
+            const scoredViolations = finalRuleViolations.map(v => ({
                 ...v,
                 confidence: calculateConfidence(v, rule, metadata)
             }));
@@ -153,6 +167,8 @@ export class RuleExecutor {
             violations.push(...scoredViolations);
             rulesProcessed++;
         }
+
+        console.log(`[EXECUTOR] Scan complete. Total violations found: ${violations.length}`);
 
         // Step 5: Rank by confidence
         const rankedViolations = violations.sort((a, b) => 

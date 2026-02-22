@@ -117,9 +117,15 @@ export class InMemoryBackend {
         const leftValue = record[cond.field];
         let rightValue = cond.value;
 
+        // SANITY CHECK: If field is missing or undefined, don't match (prevents massive false positives)
+        if (leftValue === undefined || leftValue === null) {
+            return false;
+        }
+
         // Support cross-field comparison
         if (cond.value_type === 'field' && typeof rightValue === 'string') {
             rightValue = record[rightValue];
+            if (rightValue === undefined || rightValue === null) return false;
         }
 
         switch (cond.operator) {
