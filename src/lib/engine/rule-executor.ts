@@ -1,64 +1,90 @@
 // ============================================================
 // RuleExecutor — Orchestrates: normalize → pre-filter → execute
-// Deterministic: LLM extracts rules, code enforces them
 // ============================================================
 
 import { Rule, NormalizedRecord, ExecutionConfig } from '../types';
 import { InMemoryBackend, ViolationResult } from './in-memory-backend';
 import { normalizeRecord } from './schema-adapter';
+import { validateRuleQuality } from './rule-quality-validator';
+import { DatasetMetadata } from '../upload-store';
 
 /**
  * Map Gemini-extracted rule IDs/types to engine-recognized IDs/types.
- * Uses keyword matching so any LLM naming convention works.
+ * Uses generic patterns to categorize rules without domain-specific hardcoding.
  */
 function normalizeRuleForEngine(rule: Rule): Rule {
-    const id = rule.rule_id.toUpperCase();
+    const id = (rule.rule_id || '').toUpperCase();
     const desc = (rule.description || '').toLowerCase();
     const name = (rule.name || '').toLowerCase();
     const combined = `${id} ${desc} ${name}`;
 
-    // Single-tx rule ID mappings
-    if (id.includes('CTR') && (id.includes('THRESHOLD') || id.includes('FILING'))) {
-        return { ...rule, rule_id: 'CTR_THRESHOLD', type: 'single_transaction' };
-    }
-    if (id.includes('SAR') && (id.includes('THRESHOLD') || id.includes('FILING'))) {
-        return { ...rule, rule_id: 'SAR_THRESHOLD', type: 'single_transaction' };
-    }
-    if (id.includes('HIGH_VALUE') || (id.includes('HIGH') && combined.includes('50000'))) {
-        return { ...rule, rule_id: 'HIGH_VALUE_TRANSFER', type: 'single_transaction' };
-    }
-    if (id.includes('BALANCE') && id.includes('MISMATCH')) {
-        return { ...rule, rule_id: 'BALANCE_MISMATCH', type: 'single_transaction' };
-    }
-    if (id.includes('FRAUD')) {
-        return { ...rule, rule_id: 'FRAUD_INDICATOR', type: 'single_transaction' };
-    }
-
-    // Windowed rule type mappings
-    if (id.includes('STRUCTURING') || combined.includes('structuring')) {
-        return { ...rule, type: 'structuring' };
-    }
-    if (id.includes('VELOCITY') || combined.includes('velocity')) {
-        if (combined.includes('sar') || combined.includes('rapid') || combined.includes('25000')) {
-            return { ...rule, type: 'sar_velocity' };
+    // Generic categorization based on signal types
+    
+    // 1. Single Transaction Thresholds
+    if (combined.includes('threshold') || combined.includes('limit') || combined.includes('exceed')) {
+        if (!rule.time_window) {
+            return { ...rule, type: 'single_transaction' };
         }
-        return { ...rule, type: 'sub_threshold_velocity' };
-    }
-    if (id.includes('RAPID') || combined.includes('rapid movement')) {
-        return { ...rule, type: 'sar_velocity' };
-    }
-    if (id.includes('ROUND') || combined.includes('round amount')) {
-        return { ...rule, type: 'round_amount' };
-    }
-    if (id.includes('DORMANT') || combined.includes('dormant')) {
-        return { ...rule, type: 'dormant_reactivation' };
-    }
-    if (id.includes('AGGREGAT') || combined.includes('aggregat')) {
-        return { ...rule, type: 'ctr_aggregation' };
     }
 
-    // Unrecognized rules — let the generic condition checker handle them
-    return rule;
+    // 2. Temporal / Velocity Patterns
+    if (combined.includes('velocity') || combined.includes('rapid') || combined.includes('frequency') || combined.includes('within')) {
+        return { ...rule, type: 'velocity' };
+    }
+
+    // 3. Behavioral Anomalies
+    if (combined.includes('anomaly') || combined.includes('unusual') || combined.includes('pattern') || combined.includes('change')) {
+        return { ...rule, type: 'behavioral' };
+    }
+
+    // 4. Aggregations
+    if (combined.includes('aggregate') || combined.includes('sum') || combined.includes('total')) {
+        return { ...rule, type: 'aggregation' };
+    }
+
+    // Default to provided type or single_transaction
+    return { ...rule, type: rule.type || 'single_transaction' };
+}
+
+/**
+ * ML Scoring Model (L1)
+ * Assigns a confidence score to each violation based on rule quality,
+ * signal specificity, and statistical anomaly detection.
+ */
+function calculateConfidence(
+    violation: ViolationResult, 
+    rule: Rule, 
+    metadata?: DatasetMetadata
+): number {
+    const quality = validateRuleQuality(rule);
+    let score = quality.score / 100;
+
+    // 1. Signal Specificity Boost
+    if (rule.conditions && typeof rule.conditions === 'object') {
+        if ('AND' in rule.conditions && Array.isArray(rule.conditions.AND)) {
+            // More signals = higher confidence
+            score += rule.conditions.AND.length * 0.05;
+        }
+    }
+
+    // 2. Statistical Anomaly Detection (Simulated ML)
+    if (metadata && violation.amount) {
+        const stats = metadata.columnStats['amount'];
+        
+        if (stats && stats.type === 'numeric' && stats.mean) {
+            // How many times larger than mean?
+            const ratioToMean = violation.amount / stats.mean;
+            
+            if (ratioToMean > 10) score += 0.2; // Extreme outlier
+            else if (ratioToMean > 5) score += 0.1;
+            else if (ratioToMean < 0.1) score += 0.05;
+        }
+    }
+
+    // 3. Criticality weighting
+    if (rule.severity === 'CRITICAL') score += 0.1;
+
+    return Math.max(0, Math.min(1, score));
 }
 
 export class RuleExecutor {
@@ -70,12 +96,13 @@ export class RuleExecutor {
 
     /**
      * Execute all active rules against the dataset.
-     * Returns all violations found.
+     * Returns all violations found, ranked by confidence.
      */
     executeAll(
         rules: Rule[],
         rawRecords: Record<string, any>[],
-        config: ExecutionConfig
+        config: ExecutionConfig,
+        metadata?: DatasetMetadata
     ): {
         violations: ViolationResult[];
         rulesProcessed: number;
@@ -92,7 +119,7 @@ export class RuleExecutor {
                 ? normalized.slice(0, config.sampleLimit)
                 : normalized;
 
-        // Step 3: Execute each active rule (normalize IDs for engine compatibility)
+        // Step 3: Execute each active rule
         const violations: ViolationResult[] = [];
         const activeRules = rules.filter((r) => r.is_active);
         let rulesProcessed = 0;
@@ -104,12 +131,24 @@ export class RuleExecutor {
                 sampled,
                 config.temporalScale
             );
-            violations.push(...ruleViolations);
+            
+            // Step 4: Scoring Layer (ML-Inspired)
+            const scoredViolations = ruleViolations.map(v => ({
+                ...v,
+                confidence: calculateConfidence(v, rule, metadata)
+            }));
+
+            violations.push(...scoredViolations);
             rulesProcessed++;
         }
 
+        // Step 5: Rank by confidence
+        const rankedViolations = violations.sort((a, b) => 
+            ((b as any).confidence || 0) - ((a as any).confidence || 0)
+        );
+
         return {
-            violations,
+            violations: rankedViolations,
             rulesProcessed,
             rulesTotal: activeRules.length,
         };
