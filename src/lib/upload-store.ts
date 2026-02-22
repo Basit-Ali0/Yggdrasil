@@ -8,7 +8,19 @@ type UploadData = {
     rows: Record<string, any>[];
     headers: string[];
     fileName: string;
+    metadata?: DatasetMetadata;
 };
+
+export interface DatasetMetadata {
+    columnStats: Record<string, {
+        min?: number;
+        max?: number;
+        mean?: number;
+        cardinality: number;
+        type: 'numeric' | 'categorical' | 'text';
+    }>;
+    totalRows: number;
+}
 
 const globalForUpload = globalThis as unknown as {
     uploadStore: Map<string, UploadData> | undefined;

@@ -93,9 +93,32 @@ export async function POST(request: NextRequest) {
         // Per hard rules: Agent 6 (Clarification Questions) — if Gemini fails return [] silently
         // We skip calling Gemini for clarification in MVP to save API rate limits
 
-        // Store upload in memory
+        // Store upload in memory with basic metadata for ML scoring
         const uploadId = uuid();
-        uploadStore.set(uploadId, { rows, headers, fileName: file.name });
+        
+        // Calculate basic metadata
+        const metadata = {
+            totalRows: rows.length,
+            columnStats: {} as any
+        };
+
+        headers.forEach(h => {
+            const values = rows.map(r => r[h]).filter(v => v !== null && v !== undefined);
+            const isNumeric = values.every(v => typeof v === 'number');
+            const uniqueValues = new Set(values);
+            
+            metadata.columnStats[h] = {
+                type: isNumeric ? 'numeric' : 'categorical',
+                cardinality: uniqueValues.size,
+                ...(isNumeric && values.length > 0 ? {
+                    min: Math.min(...values as number[]),
+                    max: Math.max(...values as number[]),
+                    mean: (values as number[]).reduce((a, b) => a + b, 0) / values.length
+                } : {})
+            };
+        });
+
+        uploadStore.set(uploadId, { rows, headers, fileName: file.name, metadata });
 
         // Response per CONTRACTS.md
         return NextResponse.json({
@@ -108,6 +131,7 @@ export async function POST(request: NextRequest) {
             mapping_confidence: mappingConfidence,
             temporal_scale: temporalScale,
             clarification_questions: clarificationQuestions,
+            metadata: metadata // Included for internal verification
         });
 
     } catch (err) {
