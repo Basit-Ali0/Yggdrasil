@@ -8,7 +8,7 @@ import type { Rule, Violation, ClarificationQuestion } from './types';
 // ── Screen 2 → 3: POST /api/audits ──────────────────────────
 export interface CreateAuditRequest {
     name: string;
-    policy_type: 'aml' | 'gdpr' | 'soc2';
+    policy_type: 'aml' | 'gdpr' | 'soc2' | 'pdf';
     selected_categories?: string[];
 }
 
@@ -91,6 +91,7 @@ export interface ViolationCase {
         severity: 'CRITICAL' | 'HIGH' | 'MEDIUM';
         amount: number;
         explanation: string;
+        status: 'pending' | 'approved' | 'false_positive' | 'disputed';
     }>;
 }
 

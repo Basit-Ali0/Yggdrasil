@@ -26,7 +26,9 @@ function getPolicyPack(policyType: string, selectedCategories?: string[]): { nam
             pack = { name: SOC2_POLICY_NAME, rules: SOC2_RULES };
             break;
         default:
-            throw new Error(`Unknown policy type: ${policyType}`);
+            // Custom PDF policies are handled by /api/policies/ingest or /api/policies/generate-rules
+            // This route only handles prebuilt policy packs
+            throw new Error(`No prebuilt policy pack for type: ${policyType}. Use the PDF extraction flow for custom policies.`);
     }
 
     // Filter rules if categories are selected
