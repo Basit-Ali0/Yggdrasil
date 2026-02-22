@@ -20,6 +20,11 @@ interface ExportActionsProps {
     totalViolations: number;
     criticalCount: number;
     highCount: number;
+    mediumCount?: number;
+    falsePositiveCount?: number;
+    accountsFlagged?: number;
+    recordCount?: number;
+    auditName?: string;
 }
 
 export function ExportActions({
@@ -28,6 +33,11 @@ export function ExportActions({
     totalViolations,
     criticalCount,
     highCount,
+    mediumCount = 0,
+    falsePositiveCount = 0,
+    accountsFlagged = 0,
+    recordCount,
+    auditName,
 }: ExportActionsProps) {
     const [isExporting, setIsExporting] = useState(false);
     const [isPrinting, setIsPrinting] = useState(false);
@@ -100,18 +110,67 @@ export function ExportActions({
             const formatAmount = (val: number) =>
                 typeof val === 'number' ? val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : String(val ?? 'N/A');
 
-            // Build violation detail sections grouped by severity
-            let violationSectionsHtml = '';
+            const MAX_PER_SEVERITY = 50;
+
+            // Build rule summary table (always shows full counts)
+            const ruleGroups = new Map<string, { rule_id: string; rule_name: string; severity: string; count: number; topAccount: string; totalAmount: number }>();
+            for (const v of violations) {
+                const key = v.rule_id;
+                if (!ruleGroups.has(key)) {
+                    ruleGroups.set(key, { rule_id: v.rule_id, rule_name: v.rule_name, severity: v.severity, count: 0, topAccount: v.account, totalAmount: 0 });
+                }
+                const g = ruleGroups.get(key)!;
+                g.count++;
+                g.totalAmount += typeof v.amount === 'number' ? v.amount : 0;
+            }
+
+            let summaryTableHtml = '';
+            if (violations.length > MAX_PER_SEVERITY) {
+                const ruleRows = Array.from(ruleGroups.values())
+                    .sort((a, b) => b.count - a.count)
+                    .map(g => `
+                        <tr>
+                            <td style="font-family:monospace;font-size:12px;">${escapeHtml(g.rule_id)}</td>
+                            <td><span class="severity-pill" style="background:${severityColors[g.severity]?.bg ?? '#f8fafc'}; color:${severityColors[g.severity]?.text ?? '#1a1a2e'}; border:1px solid ${severityColors[g.severity]?.border ?? '#e2e8f0'}; font-size:10px; padding:2px 8px;">${g.severity}</span></td>
+                            <td style="text-align:right;font-weight:600;">${g.count}</td>
+                            <td style="font-family:monospace;font-size:12px;">${escapeHtml(g.topAccount)}</td>
+                            <td style="text-align:right;">$${formatAmount(g.totalAmount / g.count)}</td>
+                        </tr>
+                    `).join('');
+
+                summaryTableHtml = `
+                    <h2>Violation Breakdown by Rule</h2>
+                    <table class="audit-table" style="margin-bottom:24px;">
+                        <thead><tr>
+                            <th>Rule ID</th>
+                            <th>Severity</th>
+                            <th style="text-align:right;">Count</th>
+                            <th>Top Account</th>
+                            <th style="text-align:right;">Avg Amount</th>
+                        </tr></thead>
+                        <tbody>${ruleRows}</tbody>
+                    </table>
+                `;
+            }
+
+            // Build violation detail sections grouped by severity (capped)
+            let violationSectionsHtml = summaryTableHtml;
+            let isTruncated = false;
+
             for (const severity of severityOrder) {
                 const group = violations.filter(v => v.severity === severity);
                 if (group.length === 0) continue;
+
+                const displayGroup = group.slice(0, MAX_PER_SEVERITY);
+                const overflow = group.length - displayGroup.length;
+                if (overflow > 0) isTruncated = true;
 
                 const colors = severityColors[severity];
                 violationSectionsHtml += `
                     <h2 style="page-break-before: always;">${severity} Violations (${group.length})</h2>
                 `;
 
-                for (const v of group) {
+                for (const v of displayGroup) {
                     const statusLabel = v.status === 'approved' ? 'Approved'
                         : v.status === 'false_positive' ? 'False Positive'
                         : v.status === 'disputed' ? 'Disputed'
@@ -167,6 +226,24 @@ export function ExportActions({
                     </div>
                     `;
                 }
+
+                if (overflow > 0) {
+                    violationSectionsHtml += `
+                    <div style="padding:16px 20px; background:#f8fafc; border:1px dashed #cbd5e1; border-radius:8px; text-align:center; color:#64748b; font-size:13px; margin-bottom:20px;">
+                        + ${overflow} more ${severity} violation${overflow !== 1 ? 's' : ''} not shown individually.
+                        <br><span style="font-size:11px;">Export as JSON for the complete dataset.</span>
+                    </div>
+                    `;
+                }
+            }
+
+            if (isTruncated) {
+                violationSectionsHtml += `
+                <div style="padding:20px; background:#fffbeb; border:1px solid #fcd34d; border-radius:8px; margin:24px 0; font-size:13px; color:#92400e;">
+                    <strong>Note:</strong> This report shows the top ${MAX_PER_SEVERITY} violations per severity level.
+                    For the complete dataset with all ${totalViolations} violations, export as JSON.
+                </div>
+                `;
             }
 
             const printWindow = window.open('', '_blank');
@@ -605,20 +682,36 @@ export function ExportActions({
 
     const handleCopySummary = () => {
         const scoreEmoji = complianceScore >= 80 ? '🟢' : complianceScore >= 50 ? '🟡' : '🔴';
+        const scoreLabel = complianceScore >= 80 ? 'PASS' : complianceScore >= 50 ? 'WARN' : 'FAIL';
+        const dateStr = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
-        const summary = [
-            `${scoreEmoji} *Yggdrasil — Compliance Summary*`,
+        const lines = [
+            `${scoreEmoji} *Yggdrasil — Compliance Audit Report*`,
             '',
-            `*Score:* ${complianceScore}%`,
-            `*Total Violations:* ${totalViolations}`,
-            `  • Critical: ${criticalCount}`,
-            `  • High: ${highCount}`,
-            '',
-            `_Scan ID: ${scanId.slice(0, 8)}_`,
-            `_Generated: ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}_`,
-        ].join('\n');
+        ];
 
-        navigator.clipboard.writeText(summary).then(() => {
+        if (auditName) {
+            lines.push(`*Audit:* ${auditName}`);
+        }
+        lines.push(`*Score:* ${complianceScore}% [${scoreLabel}]`);
+        lines.push('');
+        lines.push(`*Violations:* ${totalViolations}${accountsFlagged > 0 ? ` across ${accountsFlagged} accounts` : ''}`);
+        lines.push(`  • Critical: ${criticalCount}`);
+        lines.push(`  • High: ${highCount}`);
+        lines.push(`  • Medium: ${mediumCount}`);
+        lines.push('');
+        if (recordCount) {
+            lines.push(`*Dataset:* ${recordCount.toLocaleString()} rows scanned`);
+        }
+        if (falsePositiveCount > 0) {
+            lines.push(`*False Positives:* ${falsePositiveCount} dismissed`);
+        }
+        lines.push(`*Scan Date:* ${dateStr}`);
+        lines.push('');
+        lines.push('─────────────────────────');
+        lines.push('Powered by Yggdrasil — Autonomous Compliance Engine');
+
+        navigator.clipboard.writeText(lines.join('\n')).then(() => {
             toast.success('Copied to clipboard', {
                 description: 'Slack-ready summary copied.',
             });
