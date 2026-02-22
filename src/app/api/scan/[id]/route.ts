@@ -60,3 +60,35 @@ export async function GET(
         );
     }
 }
+
+export async function DELETE(
+    request: NextRequest,
+    { params }: { params: Promise<{ id: string }> }
+) {
+    try {
+        const { id } = await params;
+        const supabase = await getSupabaseForRequest(request);
+
+        const { error } = await supabase
+            .from('scans')
+            .delete()
+            .eq('id', id);
+
+        if (error) {
+            console.error('Delete scan error:', error);
+            return NextResponse.json(
+                { error: 'INTERNAL_ERROR', message: 'Failed to delete scan' },
+                { status: 500 }
+            );
+        }
+
+        return NextResponse.json({ success: true });
+
+    } catch (err) {
+        console.error('DELETE /api/scan/[id] error:', err);
+        return NextResponse.json(
+            { error: 'INTERNAL_ERROR', message: 'An unexpected error occurred' },
+            { status: 500 }
+        );
+    }
+}
