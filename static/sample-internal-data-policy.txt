@@ -1,0 +1,97 @@
+INTERNAL DATA HANDLING POLICY
+Acme Corp — Effective January 2025
+Version 2.1
+
+============================================================
+Section 1: Data Classification and Access Control
+============================================================
+
+1.1 All customer data must be classified into one of four tiers:
+    Public, Internal, Confidential, or Restricted.
+
+1.2 Access to Confidential and Restricted data requires multi-factor
+    authentication (MFA). Any account accessing these tiers without
+    MFA enabled constitutes a CRITICAL violation.
+
+1.3 Employee accounts must be deactivated within 24 hours of
+    termination. Any data access by a terminated employee account
+    is a HIGH severity violation.
+
+1.4 Third-party contractor accounts must not have access to
+    Restricted data. If a contractor account has access to
+    Restricted-tier data, flag as CRITICAL.
+
+============================================================
+Section 2: Encryption Requirements
+============================================================
+
+2.1 All customer data stored in databases must be encrypted at
+    rest using AES-256 or equivalent. Unencrypted storage of
+    customer PII is a CRITICAL violation.
+
+2.2 All data transmitted between services must use TLS 1.2 or
+    higher. Any service endpoint transmitting data without TLS
+    is a HIGH severity violation.
+
+2.3 API keys, passwords, and secret tokens must never be stored
+    in plaintext database columns. Detection of plaintext secrets
+    in any data store is a CRITICAL violation.
+
+============================================================
+Section 3: Data Retention and Deletion
+============================================================
+
+3.1 Customer data must not be retained beyond 5 years from the
+    date of last activity unless required by legal hold.
+
+3.2 When a customer requests deletion of their data, all
+    associated records must be purged within 30 calendar days.
+    Records marked for deletion but not yet purged after 30 days
+    constitute a HIGH severity violation.
+
+3.3 Backup data containing customer PII must follow the same
+    retention schedule. Backups older than 5 years must be
+    securely destroyed.
+
+============================================================
+Section 4: Audit and Monitoring
+============================================================
+
+4.1 All access to Confidential and Restricted data must be
+    logged in an immutable audit trail. Systems without audit
+    logging enabled are in violation of this policy (HIGH severity).
+
+4.2 Backup operations must complete at least once every 24 hours.
+    Any critical system without a backup in the last 24 hours
+    is a HIGH severity violation.
+
+4.3 Security incidents must be reported within 4 hours of
+    detection. Unreported incidents exceeding this window are
+    CRITICAL violations.
+
+============================================================
+Section 5: Cross-Border Data Transfers
+============================================================
+
+5.1 Customer data originating from the European Economic Area
+    must not be processed or stored in regions outside the EEA
+    unless covered by Standard Contractual Clauses (SCCs) or an
+    adequacy decision.
+
+5.2 Any data transfer to a region without an approved legal
+    basis is a CRITICAL violation.
+
+============================================================
+Section 6: Vendor and Third-Party Risk
+============================================================
+
+6.1 All third-party vendors with access to customer data must
+    complete a security questionnaire annually.
+
+6.2 Vendors that have not completed their annual review within
+    the last 12 months must have their access suspended until
+    the review is complete.
+
+============================================================
+END OF POLICY
+============================================================
