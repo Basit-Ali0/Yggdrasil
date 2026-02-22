@@ -6,13 +6,13 @@ export const PIIColumnAnalysisSchema = z.object({
     pii_type: z.enum([
         'email', 'phone', 'ssn', 'name', 'address', 'date_of_birth',
         'credit_card', 'ip_address', 'passport', 'national_id', 'bank_account', 'other',
-    ]),
-    confidence: z.number().min(0).max(1),
-    detection_regex: z.string(),
-    severity: z.enum(['CRITICAL', 'HIGH', 'MEDIUM']),
-    violation_text: z.string(),
-    suggestion: z.string(),
-    sample_evidence: z.array(z.string()).max(3),
+    ]).nullable().optional(),
+    confidence: z.number().min(0).max(100),
+    detection_regex: z.string().nullable().optional(),
+    severity: z.enum(['CRITICAL', 'HIGH', 'MEDIUM']).nullable().optional(),
+    violation_text: z.string().nullable().optional(),
+    suggestion: z.string().nullable().optional(),
+    sample_evidence: z.array(z.string()).optional(),
 });
 
 export const PIIDetectionResultSchema = z.object({
