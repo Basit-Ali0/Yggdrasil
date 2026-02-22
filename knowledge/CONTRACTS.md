@@ -135,7 +135,7 @@ interface ClarificationQuestion {
   policy_excerpt: string,            // exact text from policy doc
   policy_section: string,            // e.g. "Section 2 — Structuring Detection"
   explanation: string,               // filled template from explainability.md
-  status: "pending" | "approved" | "rejected",
+  status: "pending" | "approved" | "false_positive",
   review_note: string | null,
   reviewed_at: string | null,
   rule_accuracy: {
@@ -151,7 +151,7 @@ interface ClarificationQuestion {
 ```typescript
 // Request
 {
-  status: "approved" | "rejected",
+  status: "approved" | "false_positive",
   review_note?: string
 }
 // Response
@@ -159,6 +159,27 @@ interface ClarificationQuestion {
   success: true,
   violation: { id, status, reviewed_at },
   updated_score: number   // recalculated compliance score
+}
+```
+
+---
+
+## Screen 8 remediation: POST /api/violations/:id/remediation
+```typescript
+// Request: empty body (violation context is fetched server-side)
+{}
+
+// Response (GDPR/SOC2 only — returns 400 for AML violations)
+{
+  summary: string,                   // e.g. "Encrypt PII fields at column level"
+  steps: Array<{
+    title: string,                   // e.g. "Step 1: Enable encryption extension"
+    code: string,                    // actual code snippet
+    language: "sql" | "typescript" | "python" | "bash" | "terraform" | "text"
+  }>,
+  estimated_effort: string,          // e.g. "30 minutes"
+  risk_level: "low" | "medium" | "high",
+  applicable_frameworks: string[]    // e.g. ["GDPR", "SOC2"]
 }
 ```
 
@@ -196,6 +217,6 @@ interface Violation {
   actual_value: number
   policy_excerpt: string
   explanation: string
-  status: "pending" | "approved" | "rejected"
+  status: "pending" | "approved" | "false_positive"
 }
 ```

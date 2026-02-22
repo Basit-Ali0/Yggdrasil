@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useViolationStore } from '@/stores/violation-store';
+import { getSupabaseBrowser } from '@/lib/supabase-browser';
 import { SeverityBadge } from '@/components/ui-custom/severity-badge';
 import {
     Sheet,
@@ -26,7 +27,11 @@ import {
     BarChart3,
     History,
     TrendingDown,
+    Wrench,
+    Copy,
+    CheckCircle,
 } from 'lucide-react';
+import type { Remediation } from '@/lib/types';
 
 interface EvidenceDrawerProps {
     violationId: string | null;
@@ -45,10 +50,58 @@ export function EvidenceDrawer({ violationId, open, onOpenChange }: EvidenceDraw
     } = useViolationStore();
 
     const [reviewNote, setReviewNote] = useState('');
+    const [remediation, setRemediation] = useState<Remediation | null>(null);
+    const [isGeneratingFix, setIsGeneratingFix] = useState(false);
+    const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+
+    // AML rules don't get a Generate Fix button
+    const isAmlRule = (ruleId?: string) => {
+        if (!ruleId) return true;
+        const amlPatterns = ['CTR_', 'SAR_', 'STRUCTURING', 'VELOCITY', 'DORMANT', 'ROUND_AMOUNT', 'HIGH_RISK', 'RAPID_MOVEMENT', 'SUB_THRESHOLD', 'SMURFING'];
+        return amlPatterns.some(p => ruleId.toUpperCase().includes(p));
+    };
+
+    const handleGenerateFix = async () => {
+        if (!violationId) return;
+        setIsGeneratingFix(true);
+        try {
+            // Get auth token from Supabase session
+            const supabase = getSupabaseBrowser();
+            const { data: { session } } = await supabase.auth.getSession();
+            const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+            if (session?.access_token) {
+                headers['Authorization'] = `Bearer ${session.access_token}`;
+            }
+            const res = await fetch(`/api/violations/${violationId}/remediation`, {
+                method: 'POST',
+                headers,
+                credentials: 'same-origin',
+            });
+            if (!res.ok) {
+                const err = await res.json();
+                toast.error('Could not generate fix', { description: err.message });
+                return;
+            }
+            const data: Remediation = await res.json();
+            setRemediation(data);
+            toast.success('Fix generated', { description: data.summary });
+        } catch {
+            toast.error('Failed to generate fix');
+        } finally {
+            setIsGeneratingFix(false);
+        }
+    };
+
+    const handleCopyCode = (code: string, idx: number) => {
+        navigator.clipboard.writeText(code);
+        setCopiedIdx(idx);
+        setTimeout(() => setCopiedIdx(null), 2000);
+    };
 
     useEffect(() => {
         if (violationId && open) {
             fetchViolation(violationId);
+            setRemediation(null);
         }
         return () => clearActiveViolation();
     }, [violationId, open, fetchViolation, clearActiveViolation]);
@@ -109,6 +162,25 @@ export function EvidenceDrawer({ violationId, open, onOpenChange }: EvidenceDraw
                                 >
                                     {v.status}
                                 </Badge>
+                                {/* Generate Fix button — hidden for AML */}
+                                {!isAmlRule(v.rule_id) && (
+                                    <Button
+                                        size="sm"
+                                        variant={remediation ? 'outline' : 'default'}
+                                        onClick={handleGenerateFix}
+                                        disabled={isGeneratingFix || !!remediation}
+                                        className="ml-auto"
+                                    >
+                                        {isGeneratingFix ? (
+                                            <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                                        ) : remediation ? (
+                                            <CheckCircle className="mr-2 h-3 w-3 text-emerald" />
+                                        ) : (
+                                            <Wrench className="mr-2 h-3 w-3" />
+                                        )}
+                                        {remediation ? 'Fix Generated' : 'Generate Fix'}
+                                    </Button>
+                                )}
                             </SheetDescription>
                         </SheetHeader>
 
@@ -227,9 +299,9 @@ export function EvidenceDrawer({ violationId, open, onOpenChange }: EvidenceDraw
                                                     </div>
                                                 </ScrollArea>
                                                 <div className="mt-3 pt-2 border-t text-[10px] text-muted-foreground">
-                                                    <a 
-                                                        href={v.full_article_text[0].href} 
-                                                        target="_blank" 
+                                                    <a
+                                                        href={v.full_article_text[0].href}
+                                                        target="_blank"
                                                         rel="noopener noreferrer"
                                                         className="hover:text-primary transition-colors underline"
                                                     >
@@ -240,6 +312,69 @@ export function EvidenceDrawer({ violationId, open, onOpenChange }: EvidenceDraw
                                         </Card>
                                     )}
                                 </div>
+
+                                {/* Suggested Remediation — after Generate Fix */}
+                                {remediation && (
+                                    <Card className="border-emerald/30 bg-emerald/5">
+                                        <CardHeader className="pb-2">
+                                            <CardTitle className="flex items-center gap-2 text-sm">
+                                                <Wrench className="h-4 w-4 text-emerald" />
+                                                Suggested Remediation
+                                            </CardTitle>
+                                            <div className="flex items-center gap-2">
+                                                <Badge variant="outline" className="text-[10px]">
+                                                    Effort: {remediation.estimated_effort}
+                                                </Badge>
+                                                <Badge
+                                                    variant="outline"
+                                                    className={`text-[10px] ${remediation.risk_level === 'low'
+                                                        ? 'text-emerald border-emerald/30'
+                                                        : remediation.risk_level === 'medium'
+                                                            ? 'text-amber border-amber/30'
+                                                            : 'text-ruby border-ruby/30'
+                                                        }`}
+                                                >
+                                                    Risk: {remediation.risk_level}
+                                                </Badge>
+                                            </div>
+                                        </CardHeader>
+                                        <CardContent className="space-y-3">
+                                            <p className="text-sm text-muted-foreground">{remediation.summary}</p>
+                                            {remediation.steps.map((step, idx) => (
+                                                <div key={idx} className="space-y-1">
+                                                    <div className="flex items-center justify-between">
+                                                        <p className="text-xs font-bold text-muted-foreground">
+                                                            {step.title}
+                                                        </p>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="h-6 px-2 text-[10px]"
+                                                            onClick={() => handleCopyCode(step.code, idx)}
+                                                        >
+                                                            {copiedIdx === idx ? (
+                                                                <><CheckCircle className="mr-1 h-3 w-3 text-emerald" />Copied</>
+                                                            ) : (
+                                                                <><Copy className="mr-1 h-3 w-3" />Copy</>
+                                                            )}
+                                                        </Button>
+                                                    </div>
+                                                    <div className="relative rounded-md bg-[#1e1e2e] p-3 overflow-x-auto">
+                                                        <span className="absolute top-1 right-2 text-[9px] uppercase tracking-wider text-muted-foreground/50">
+                                                            {step.language}
+                                                        </span>
+                                                        <pre className="text-xs text-[#cdd6f4] whitespace-pre-wrap font-mono-code">
+                                                            <code>{step.code}</code>
+                                                        </pre>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                            <div className="pt-2 border-t text-[10px] text-muted-foreground">
+                                                Frameworks: {remediation.applicable_frameworks.join(', ')}
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                )}
 
                                 {/* Right Panel: Evidence */}
                                 <div className="space-y-4">

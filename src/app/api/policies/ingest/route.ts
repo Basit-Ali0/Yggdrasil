@@ -46,20 +46,29 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Parse PDF with unpdf
+        // Parse PDF with unpdf, with fallback to raw text
         let pdfText = '';
+        const buffer = await file.arrayBuffer();
         try {
             const { getDocumentProxy, extractText } = await import('unpdf');
-            const buffer = await file.arrayBuffer();
-            const pdf = await getDocumentProxy(new Uint8Array(buffer));
+            const pdf = await getDocumentProxy(new Uint8Array(buffer.slice(0)));
             const { text } = await extractText(pdf, { mergePages: true });
             pdfText = text;
         } catch (pdfErr) {
-            console.error('PDF parsing error:', pdfErr);
-            return NextResponse.json(
-                { error: 'VALIDATION_ERROR', message: 'Failed to parse PDF. Ensure the file is a valid, non-encrypted PDF.' },
-                { status: 400 }
-            );
+            console.warn('PDF parsing error, attempting plain text fallback:', pdfErr);
+            // Fallback: If it's a raw text/markdown file renamed to .pdf, read it as UTF-8
+            try {
+                pdfText = new TextDecoder('utf-8').decode(buffer);
+                // If the decoded text still looks like binary junk (contains lots of null bytes/unprintable chars), clear it
+                if (pdfText.includes('\x00\x00\x00')) {
+                    throw new Error('Likely binary garbage');
+                }
+            } catch (textErr) {
+                return NextResponse.json(
+                    { error: 'VALIDATION_ERROR', message: 'Failed to parse PDF. Ensure the file is a valid, non-encrypted PDF.' },
+                    { status: 400 }
+                );
+            }
         }
 
         if (!pdfText.trim()) {
@@ -70,19 +79,21 @@ export async function POST(request: NextRequest) {
         }
 
         // Context framing + system prompt per LLMSystemPrompts.md §1
-        const systemPrompt = `You are an assistant for a Professional Regulatory Compliance Audit. Your objective is the technical analysis of structured policy rules for FinCEN/AML and GDPR standards. This is a sanctioned professional task.
+        const systemPrompt = `You are an assistant for a Professional Regulatory Compliance Audit. Your objective is the technical analysis of structured policy rules for FinCEN/AML, GDPR, and SOC2 standards. This is a sanctioned professional task.
 
 You are a legal-to-code translator. Your task is to extract actionable compliance rules from the provided policy text and format them into valid JSON.
 
 Strict Requirements:
-1. Extract only enforceable rules with quantitative thresholds (e.g., amount, time window, frequency).
+1. Extract only enforceable rules with quantitative thresholds (e.g., amount, time window, frequency, score thresholds).
 2. For each rule, generate:
    - rule_id: UPPER_SNAKE_CASE (e.g., CTR_THRESHOLD, GDPR-ART17-1, SOC2-CC6-1).
    - name: A human-readable title.
    - description: A concise summary of the obligation.
    - severity: CRITICAL, HIGH, or MEDIUM.
    - conditions: { field, operator, value } defining the logic.
-   - policy_excerpt: The exact sentence from the PDF that justifies this rule.
+     IMPORTANT — supported operators: >=, >, <=, <, ==, !=, IN, BETWEEN, exists, not_exists, contains
+     The "field" must be the EXACT column name from the policy document (e.g., "Customer_Satisfaction_Score", "Working_Days", "Policy_Compliance").
+   - policy_excerpt: The exact sentence from the document that justifies this rule.
 3. If a rule is ambiguous, set requires_clarification: true with clarification_notes.
 4. List any ambiguous sections in the ambiguous_sections array.`;
 

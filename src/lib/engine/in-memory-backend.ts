@@ -134,7 +134,10 @@ export class InMemoryBackend {
         if (!cond || !cond.field) return false;
         const value = record[cond.field];
 
-        switch (cond.operator) {
+        // Normalize operator aliases from Gemini LLM output
+        const op = this.normalizeOperator(cond.operator);
+
+        switch (op) {
             case '>=':
                 return (value as number) >= (cond.value as number);
             case '>':
@@ -144,9 +147,11 @@ export class InMemoryBackend {
             case '<':
                 return (value as number) < (cond.value as number);
             case '==':
-                return value === cond.value;
+                // eslint-disable-next-line eqeqeq
+                return value == cond.value;
             case '!=':
-                return value !== cond.value;
+                // eslint-disable-next-line eqeqeq
+                return value != cond.value;
             case 'IN':
                 return Array.isArray(cond.value) && cond.value.includes(value);
             case 'BETWEEN':
@@ -155,9 +160,38 @@ export class InMemoryBackend {
                     (value as number) >= cond.value[0] &&
                     (value as number) <= cond.value[1]
                 );
+            case 'EXISTS':
+                return value !== undefined && value !== null && value !== '';
+            case 'NOT_EXISTS':
+                return value === undefined || value === null || value === '';
+            case 'CONTAINS':
+                return typeof value === 'string' && typeof cond.value === 'string' &&
+                    value.toLowerCase().includes(cond.value.toLowerCase());
             default:
                 return false;
         }
+    }
+
+    /**
+     * Map common operator aliases from Gemini LLM output to engine-standard operators.
+     */
+    private normalizeOperator(op: string): string {
+        const normalized = op.trim().toLowerCase();
+        const map: Record<string, string> = {
+            // Standard
+            '>=': '>=', '>': '>', '<=': '<=', '<': '<',
+            '==': '==', '!=': '!=', 'in': 'IN', 'between': 'BETWEEN',
+            // Gemini aliases
+            'equals': '==', 'equal': '==', 'eq': '==',
+            'not_equals': '!=', 'not_equal': '!=', 'neq': '!=', 'ne': '!=',
+            'greater_than': '>', 'gt': '>',
+            'greater_than_or_equal': '>=', 'gte': '>=',
+            'less_than': '<', 'lt': '<',
+            'less_than_or_equal': '<=', 'lte': '<=',
+            'exists': 'EXISTS', 'not_exists': 'NOT_EXISTS',
+            'contains': 'CONTAINS', 'includes': 'CONTAINS',
+        };
+        return map[normalized] || op;
     }
 
     // ── Windowed rules ───────────────────────────────────────

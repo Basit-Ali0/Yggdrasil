@@ -54,19 +54,21 @@ export async function POST(request: NextRequest) {
 
         const { text, file_name } = parsed.data;
 
-        const systemPrompt = `You are an assistant for a Professional Regulatory Compliance Audit. Your objective is the technical analysis of structured policy rules for FinCEN/AML and GDPR standards. This is a sanctioned professional task.
+        const systemPrompt = `You are an assistant for a Professional Regulatory Compliance Audit. Your objective is the technical analysis of structured policy rules for FinCEN/AML, GDPR, and SOC2 standards. This is a sanctioned professional task.
 
 You are a legal-to-code translator. Your task is to extract actionable compliance rules from the provided policy text and format them into valid JSON.
 
 Strict Requirements:
-1. Extract only enforceable rules with quantitative thresholds (e.g., amount, time window, frequency).
+1. Extract only enforceable rules with quantitative thresholds (e.g., amount, time window, frequency, score thresholds).
 2. For each rule, generate:
    - rule_id: UPPER_SNAKE_CASE (e.g., CTR_THRESHOLD, GDPR-ART17-1, SOC2-CC6-1).
    - name: A human-readable title.
    - description: A concise summary of the obligation.
    - severity: CRITICAL, HIGH, or MEDIUM.
    - conditions: { field, operator, value } defining the logic.
-   - policy_excerpt: The exact sentence from the PDF that justifies this rule.
+     IMPORTANT — supported operators: >=, >, <=, <, ==, !=, IN, BETWEEN, exists, not_exists, contains
+     The "field" must be the EXACT column name from the policy document (e.g., "Customer_Satisfaction_Score", "Working_Days", "Policy_Compliance").
+   - policy_excerpt: The exact sentence from the document that justifies this rule.
 3. If a rule is ambiguous, set requires_clarification: true with clarification_notes.
 4. List any ambiguous sections in the ambiguous_sections array.`;
 
@@ -143,9 +145,10 @@ Strict Requirements:
                 { status: 401 }
             );
         }
-        console.error('POST /api/policies/generate-rules error:', err);
+        const errMessage = err instanceof Error ? err.message : String(err);
+        console.error('POST /api/policies/generate-rules error:', errMessage, err);
         return NextResponse.json(
-            { error: 'INTERNAL_ERROR', message: 'An unexpected error occurred' },
+            { error: 'INTERNAL_ERROR', message: `Rule generation failed: ${errMessage}` },
             { status: 500 }
         );
     }

@@ -36,18 +36,28 @@ export async function POST(request: NextRequest) {
         }
 
         let pdfText = '';
+        const buffer = await file.arrayBuffer();
+
         try {
             const { getDocumentProxy, extractText } = await import('unpdf');
-            const buffer = await file.arrayBuffer();
-            const pdf = await getDocumentProxy(new Uint8Array(buffer));
+            // Clone the buffer because pdf.js might transfer it to a worker, detaching it
+            const pdf = await getDocumentProxy(new Uint8Array(buffer.slice(0)));
             const { text } = await extractText(pdf, { mergePages: true });
             pdfText = text;
         } catch (pdfErr) {
-            console.error('PDF parsing error:', pdfErr);
-            return NextResponse.json(
-                { error: 'VALIDATION_ERROR', message: 'Failed to parse PDF. Ensure the file is a valid, non-encrypted PDF.' },
-                { status: 400 }
-            );
+            console.warn('PDF parsing error, attempting plain text fallback:', pdfErr);
+            try {
+                pdfText = new TextDecoder('utf-8').decode(buffer);
+                if (pdfText.includes('\x00\x00\x00')) {
+                    throw new Error('Likely binary garbage');
+                }
+            } catch (textErr) {
+                console.error('Plain text fallback failed:', textErr);
+                return NextResponse.json(
+                    { error: 'VALIDATION_ERROR', message: 'Failed to parse PDF. Ensure the file is a valid, non-encrypted PDF.' },
+                    { status: 400 }
+                );
+            }
         }
 
         if (!pdfText.trim()) {

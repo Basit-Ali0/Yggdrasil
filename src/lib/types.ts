@@ -62,6 +62,21 @@ export interface Violation {
     record_id?: string;
 }
 
+// ── Remediation (Generate Fix) ───────────────────────────────
+export interface RemediationStep {
+    title: string;
+    code: string;
+    language: 'sql' | 'typescript' | 'python' | 'bash' | 'terraform' | 'text';
+}
+
+export interface Remediation {
+    summary: string;
+    steps: RemediationStep[];
+    estimated_effort: string;
+    risk_level: 'low' | 'medium' | 'high';
+    applicable_frameworks: string[];
+}
+
 // ── Scan ─────────────────────────────────────────────────────
 export interface Scan {
     id: string;
