@@ -85,76 +85,72 @@ export class InMemoryBackend {
     }
 
     private checkSingleTxRule(rule: Rule, record: NormalizedRecord): boolean {
-        switch (rule.rule_id) {
-            case 'CTR_THRESHOLD':
-                return (
-                    record.amount >= 10000 &&
-                    ['WIRE', 'CASH_OUT', 'TRANSFER', 'DEPOSIT', 'CASH_IN'].includes(
-                        record.type.toUpperCase()
-                    )
-                );
-
-            case 'SAR_THRESHOLD':
-                return (
-                    record.amount >= 5000 &&
-                    ['WIRE', 'TRANSFER'].includes(record.type.toUpperCase())
-                );
-
-            case 'BALANCE_MISMATCH': {
-                if (
-                    record.oldbalanceOrg === undefined ||
-                    record.newbalanceOrig === undefined
-                )
-                    return false;
-                const expectedAfterSend = record.oldbalanceOrg - record.amount;
-                return Math.abs(expectedAfterSend - record.newbalanceOrig) > 0.01;
-            }
-
-            case 'FRAUD_INDICATOR':
-                return (
-                    ['CASH_OUT', 'TRANSFER'].includes(record.type.toUpperCase()) &&
-                    record.oldbalanceDest === 0 &&
-                    (record.newbalanceDest ?? 0) > 0
-                );
-
-            case 'HIGH_VALUE_TRANSFER':
-                return (
-                    ['WIRE', 'TRANSFER'].includes(record.type.toUpperCase()) &&
-                    record.amount > 50000
-                );
-
-            default:
-                // Generic condition check
-                return this.checkConditions(rule, record);
-        }
+        // All rules now go through generic condition checker
+        return this.checkConditions(rule, record);
     }
 
     private checkConditions(rule: Rule, record: NormalizedRecord): boolean {
         const cond = rule.conditions;
-        if (!cond || !cond.field) return false;
-        const value = record[cond.field];
+        if (!cond) return false;
+        
+        return this.evaluateLogic(cond, record);
+    }
+
+    private evaluateLogic(cond: any, record: NormalizedRecord): boolean {
+        // Handle recursive compound conditions
+        if ('AND' in cond && Array.isArray(cond.AND)) {
+            return (cond.AND as any[]).every(c => this.evaluateLogic(c, record));
+        }
+        if ('OR' in cond && Array.isArray(cond.OR)) {
+            return (cond.OR as any[]).some(c => this.evaluateLogic(c, record));
+        }
+        
+        // Handle simple condition
+        if ('field' in cond) {
+            return this.checkSingleCondition(cond as any, record);
+        }
+        
+        return false;
+    }
+
+    private checkSingleCondition(cond: { field: string; operator: string; value: any; value_type?: string }, record: NormalizedRecord): boolean {
+        const leftValue = record[cond.field];
+        let rightValue = cond.value;
+
+        // Support cross-field comparison
+        if (cond.value_type === 'field' && typeof rightValue === 'string') {
+            rightValue = record[rightValue];
+        }
 
         switch (cond.operator) {
             case '>=':
-                return (value as number) >= (cond.value as number);
+                return (leftValue as number) >= (rightValue as number);
             case '>':
-                return (value as number) > (cond.value as number);
+                return (leftValue as number) > (rightValue as number);
             case '<=':
-                return (value as number) <= (cond.value as number);
+                return (leftValue as number) <= (rightValue as number);
             case '<':
-                return (value as number) < (cond.value as number);
+                return (leftValue as number) < (rightValue as number);
             case '==':
-                return value === cond.value;
+            case 'EQ':
+                return leftValue === rightValue;
             case '!=':
-                return value !== cond.value;
+            case 'NEQ':
+                return leftValue !== rightValue;
             case 'IN':
-                return Array.isArray(cond.value) && cond.value.includes(value);
+                return Array.isArray(rightValue) && rightValue.includes(leftValue);
             case 'BETWEEN':
                 return (
-                    Array.isArray(cond.value) &&
-                    (value as number) >= cond.value[0] &&
-                    (value as number) <= cond.value[1]
+                    Array.isArray(rightValue) &&
+                    (leftValue as number) >= rightValue[0] &&
+                    (leftValue as number) <= rightValue[1]
                 );
+            case 'MATCH':
+            case 'REGEX':
+                if (typeof leftValue === 'string' && typeof rightValue === 'string') {
+                    return new RegExp(rightValue).test(leftValue);
+                }
+                return false;
             default:
                 return false;
         }
@@ -209,19 +205,15 @@ export class InMemoryBackend {
         temporalScale: number
     ): ViolationResult[] {
         switch (rule.type) {
+            case 'aggregation':
             case 'ctr_aggregation':
-                return this.checkCtrAggregation(rule, account, records, temporalScale);
-            case 'structuring':
-                return this.checkStructuring(rule, account, records, temporalScale);
-            case 'sub_threshold_velocity':
-                return this.checkSubThresholdVelocity(
-                    rule,
-                    account,
-                    records,
-                    temporalScale
-                );
+                return this.checkAggregation(rule, account, records, temporalScale);
+            case 'velocity':
+            case 'velocity_limit':
             case 'sar_velocity':
-                return this.checkSarVelocity(rule, account, records, temporalScale);
+            case 'sub_threshold_velocity':
+            case 'structuring':
+                return this.checkVelocity(rule, account, records, temporalScale);
             case 'dormant_reactivation':
                 return this.checkDormantReactivation(
                     rule,
@@ -231,39 +223,57 @@ export class InMemoryBackend {
                 );
             case 'round_amount':
                 return this.checkRoundAmount(rule, account, records, temporalScale);
+            case 'behavioral':
+                // For behavioral, we treat it as single tx but with history context
+                return this.executeSingleTx(rule, records);
             default:
                 return [];
         }
     }
 
-    // ── CTR_AGGREGATION ────────────────────────────────────────
-    // Group by sender+receiver per 24h window, flag if SUM >= 10000
-
-    private checkCtrAggregation(
+    private checkAggregation(
         rule: Rule,
         account: string,
         records: NormalizedRecord[],
         scale: number
     ): ViolationResult[] {
         const violations: ViolationResult[] = [];
+        const window = rule.time_window || 24;
+        const groupBy = rule.group_by_field || 'recipient';
+        const aggField = rule.aggregation_field || 'amount';
+        const aggFunc = rule.aggregation_function || 'sum';
+        const threshold = rule.threshold || 0;
 
-        // Group by (recipient, day-window)
-        const pairWindows = new Map<string, NormalizedRecord[]>();
+        // Group by (groupByField, window)
+        const windows = new Map<string, NormalizedRecord[]>();
         for (const r of records) {
-            const dayKey = getWindowKey(r.step, 24, scale);
-            const key = `${r.recipient}_${dayKey}`;
-            if (!pairWindows.has(key)) pairWindows.set(key, []);
-            pairWindows.get(key)!.push(r);
+            const timeKey = getWindowKey(r.step, window, scale);
+            const groupVal = r[groupBy] || 'unknown';
+            const key = `${groupVal}_${timeKey}`;
+            if (!windows.has(key)) windows.set(key, []);
+            windows.get(key)!.push(r);
         }
 
-        for (const [key, txns] of pairWindows) {
-            const total = txns.reduce((s, r) => s + r.amount, 0);
-            if (total >= 10000 && txns.length > 1) {
+        for (const [key, txns] of windows) {
+            let actualValue = 0;
+            const values = txns.map(t => t[aggField] as number).filter(v => typeof v === 'number');
+
+            if (aggFunc === 'sum') actualValue = values.reduce((a, b) => a + b, 0);
+            else if (aggFunc === 'count') actualValue = values.length;
+            else if (aggFunc === 'avg') actualValue = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
+            else if (aggFunc === 'max') actualValue = Math.max(...values);
+            else if (aggFunc === 'min') actualValue = Math.min(...values);
+
+            // Special case for legacy CTR Aggregation
+            const isLegacyCtr = rule.rule_id === 'CTR_AGGREGATION' && txns.length > 1;
+            const meetsThreshold = actualValue >= threshold;
+
+            if (meetsThreshold && (rule.type === 'aggregation' || isLegacyCtr || txns.length > 1)) {
                 violations.push(
                     this.createWindowedViolation(rule, account, txns, {
-                        actual_value: total,
-                        threshold: 10000,
-                        recipient: txns[0].recipient,
+                        actual_value: actualValue,
+                        threshold,
+                        group_value: key.split('_')[0],
                     })
                 );
             }
@@ -272,107 +282,50 @@ export class InMemoryBackend {
         return violations;
     }
 
-    // ── STRUCTURING_PATTERN ────────────────────────────────────
-    // 3+ transactions $8K–$10K within 24 hours
-
-    private checkStructuring(
+    private checkVelocity(
         rule: Rule,
         account: string,
         records: NormalizedRecord[],
         scale: number
     ): ViolationResult[] {
-        // Pre-filter to sub-threshold amounts
-        const filtered = preFilterForSubThreshold(records).filter(
-            (r) => r.amount < 10000
-        );
-        if (filtered.length < 3) return [];
-
         const violations: ViolationResult[] = [];
-
-        // Group by 24h window
-        const windows = new Map<number, NormalizedRecord[]>();
-        for (const r of filtered) {
-            const wk = getWindowKey(r.step, 24, scale);
-            if (!windows.has(wk)) windows.set(wk, []);
-            windows.get(wk)!.push(r);
+        const window = rule.time_window || 24;
+        const threshold = rule.threshold || 1;
+        
+        // Velocity usually implies COUNT or SUM over window
+        // For PaySim AML, we had special filters for structuring
+        let filtered = records;
+        if (rule.rule_id === 'STRUCTURING_PATTERN' || rule.rule_id === 'SUB_THRESHOLD_VELOCITY') {
+            filtered = preFilterForSubThreshold(records).filter(r => r.amount < 10000);
         }
-
-        for (const [, txns] of windows) {
-            if (txns.length >= 3) {
-                violations.push(
-                    this.createWindowedViolation(rule, account, txns, {
-                        actual_value: txns.length,
-                        threshold: 3,
-                    })
-                );
-            }
-        }
-
-        return violations;
-    }
-
-    // ── SUB_THRESHOLD_VELOCITY ─────────────────────────────────
-    // 5+ sub-threshold transactions ($8K–$10K) in 24 hours
-
-    private checkSubThresholdVelocity(
-        rule: Rule,
-        account: string,
-        records: NormalizedRecord[],
-        scale: number
-    ): ViolationResult[] {
-        const filtered = preFilterForSubThreshold(records).filter(
-            (r) => r.amount < 10000
-        );
-        if (filtered.length < 5) return [];
-
-        const violations: ViolationResult[] = [];
 
         const windows = new Map<number, NormalizedRecord[]>();
         for (const r of filtered) {
-            const wk = getWindowKey(r.step, 24, scale);
+            const wk = getWindowKey(r.step, window, scale);
             if (!windows.has(wk)) windows.set(wk, []);
             windows.get(wk)!.push(r);
         }
 
         for (const [, txns] of windows) {
-            if (txns.length >= 5) {
-                violations.push(
-                    this.createWindowedViolation(rule, account, txns, {
-                        actual_value: txns.length,
-                        threshold: 5,
-                    })
-                );
+            const count = txns.length;
+            const sum = txns.reduce((s, r) => s + r.amount, 0);
+            
+            let triggered = false;
+            let actualValue = count;
+
+            if (rule.type === 'velocity' || rule.type === 'velocity_limit' || rule.type === 'sub_threshold_velocity' || rule.type === 'structuring') {
+                triggered = count >= threshold;
+                actualValue = count;
+            } else if (rule.type === 'sar_velocity') {
+                triggered = sum > (rule.threshold || 25000);
+                actualValue = sum;
             }
-        }
 
-        return violations;
-    }
-
-    // ── SAR_VELOCITY ───────────────────────────────────────────
-    // SUM(amount) > $25,000 in 24h
-
-    private checkSarVelocity(
-        rule: Rule,
-        account: string,
-        records: NormalizedRecord[],
-        scale: number
-    ): ViolationResult[] {
-        const violations: ViolationResult[] = [];
-
-        const windows = new Map<number, NormalizedRecord[]>();
-        for (const r of records) {
-            const wk = getWindowKey(r.step, 24, scale);
-            if (!windows.has(wk)) windows.set(wk, []);
-            windows.get(wk)!.push(r);
-        }
-
-        for (const [, txns] of windows) {
-            const total = txns.reduce((s, r) => s + r.amount, 0);
-            if (total > 25000) {
+            if (triggered) {
                 violations.push(
                     this.createWindowedViolation(rule, account, txns, {
-                        actual_value: total,
-                        threshold: 25000,
+                        actual_value: actualValue,
+                        threshold: rule.threshold || threshold,
                     })
                 );
             }
