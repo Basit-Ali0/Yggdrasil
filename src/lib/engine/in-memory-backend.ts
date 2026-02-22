@@ -130,6 +130,11 @@ export class InMemoryBackend {
     }
 
     private evaluateLogic(cond: any, record: NormalizedRecord): boolean {
+        // Guard: skip primitives (strings, numbers) that LLM may produce in condition arrays
+        if (cond === null || cond === undefined || typeof cond !== 'object') {
+            return false;
+        }
+
         // Handle recursive compound conditions
         if ('AND' in cond && Array.isArray(cond.AND)) {
             return (cond.AND as any[]).every(c => this.evaluateLogic(c, record));
