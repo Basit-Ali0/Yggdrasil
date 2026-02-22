@@ -43,6 +43,8 @@ export async function GET(
             created_at: scan.created_at,
             completed_at: scan.completed_at,
             audit_name: scan.audit_name ?? null,
+            score_history: scan.score_history ?? [],
+            record_count: scan.record_count ?? 0,
             // Rescan fields
             policy_id: scan.policy_id ?? null,
             upload_id: scan.upload_id ?? null,

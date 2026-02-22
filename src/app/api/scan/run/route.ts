@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
             mapping_config: mapping.mapping_config,
             data_source: 'csv',
             file_name: upload.fileName,
-            record_count: upload.rows.length,
+            record_count: Math.min(upload.rows.length, 50000),
             status: 'running',
             upload_id,
             mapping_id,
@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
         // 5. Run scan synchronously (< 5s for 50K rows)
         console.log(`[SCAN-API] Triggering executor for scanId: ${scanId}`);
         const executor = new RuleExecutor();
-        const { violations, rulesProcessed, rulesTotal } = executor.executeAll(
+        const { violations, trueViolationCount, rulesProcessed, rulesTotal } = executor.executeAll(
             rules,
             upload.rows,
             {
@@ -126,7 +126,7 @@ export async function POST(request: NextRequest) {
             },
             upload.metadata // Pass dataset metadata for ML scoring
         );
-        console.log(`[SCAN-API] Executor finished for scanId: ${scanId}. Found ${violations.length} violations across ${rulesProcessed} rules.`);
+        console.log(`[SCAN-API] Executor finished for scanId: ${scanId}. Found ${trueViolationCount} violations (stored ${violations.length}) across ${rulesProcessed} rules.`);
 
         // 6. Calculate compliance score
         console.log(`[SCAN-API] Calculating compliance score...`);
@@ -190,18 +190,38 @@ export async function POST(request: NextRequest) {
 
         // 8. Update scan to completed
         console.log(`[SCAN-API] Marking scan ${scanId} as completed.`);
+        const completedAt = new Date().toISOString();
+        const initialScoreHistory = [{
+            score,
+            timestamp: completedAt,
+            action: 'scan_completed',
+            violation_id: null,
+        }];
+
         const { error: scanUpdateErr } = await supabase
             .from('scans')
             .update({
                 status: 'completed',
-                violation_count: violations.length,
+                violation_count: trueViolationCount,
                 compliance_score: score,
-                completed_at: new Date().toISOString(),
+                completed_at: completedAt,
+                score_history: initialScoreHistory,
             })
             .eq('id', scanId);
 
         if (scanUpdateErr) {
             console.error('Scan update error:', scanUpdateErr);
+        }
+
+        // Link PII findings to this scan
+        try {
+            await supabase
+                .from('pii_findings')
+                .update({ scan_id: scanId })
+                .eq('upload_id', upload_id)
+                .is('scan_id', null);
+        } catch (e) {
+            console.warn('[SCAN-API] Failed to link PII findings:', e);
         }
 
         // Return initial response per CONTRACTS.md

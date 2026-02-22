@@ -99,13 +99,13 @@ For each column, evaluate whether it contains PII. Return your findings.`;
         const executionResults = executePIIDetection(rows, piiFindings);
         console.log(`[PII-SCAN] Detection finished. Found matches in ${executionResults.filter(r => r.match_count > 0).length} columns.`);
 
-        // 6. If scan_id provided, persist findings to Supabase
-        if (scan_id && executionResults.length > 0) {
-            console.log(`[PII-SCAN] Persisting findings to Supabase for scan_id: ${scan_id}`);
+        // 6. Persist findings to Supabase (scan_id may be null if called before scan creation)
+        if (executionResults.length > 0) {
+            console.log(`[PII-SCAN] Persisting findings to Supabase for upload_id: ${upload_id}, scan_id: ${scan_id ?? 'null'}`);
             try {
                 const supabase = getSupabase();
                 const insertRows = executionResults.map((r) => ({
-                    scan_id,
+                    scan_id: scan_id || null,
                     upload_id,
                     column_name: r.column_name,
                     pii_type: r.pii_type,

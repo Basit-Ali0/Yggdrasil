@@ -193,6 +193,29 @@ export async function PATCH(
             .update({ compliance_score: newScore })
             .eq('id', updated.scan_id);
 
+        // Track score history for compliance trend chart
+        try {
+            const { data: scanData } = await supabase
+                .from('scans')
+                .select('score_history')
+                .eq('id', updated.scan_id)
+                .single();
+            const history = Array.isArray(scanData?.score_history) ? scanData.score_history : [];
+            history.push({
+                score: newScore,
+                timestamp: new Date().toISOString(),
+                action: dbStatus === 'false_positive' ? 'false_positive' : 'approved',
+                violation_id: id,
+            });
+            await supabase
+                .from('scans')
+                .update({ score_history: history })
+                .eq('id', updated.scan_id);
+        } catch (historyErr) {
+            // score_history column may not exist yet — non-critical
+            console.warn('[violations/PATCH] score_history update failed:', historyErr);
+        }
+
         // Return per CONTRACTS.md
         return NextResponse.json({
             success: true,
