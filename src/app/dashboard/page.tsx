@@ -145,6 +145,7 @@ export default function DashboardIndexPage() {
                                     <TableHead>Date</TableHead>
                                     <TableHead>Score</TableHead>
                                     <TableHead>Violations</TableHead>
+                                    <TableHead>Delta</TableHead>
                                     <TableHead>Status</TableHead>
                                     <TableHead className="text-right">Action</TableHead>
                                 </TableRow>
@@ -186,6 +187,24 @@ export default function DashboardIndexPage() {
                                         </TableCell>
                                         <TableCell>
                                             <Badge variant="secondary">{scan.violation_count ?? 0}</Badge>
+                                        </TableCell>
+                                        <TableCell>
+                                            {((scan as any).new_violations > 0 || (scan as any).resolved_violations > 0) ? (
+                                                <div className="flex items-center gap-1.5">
+                                                    {(scan as any).new_violations > 0 && (
+                                                        <span className="text-xs text-blue-600 font-medium">
+                                                            +{(scan as any).new_violations}
+                                                        </span>
+                                                    )}
+                                                    {(scan as any).resolved_violations > 0 && (
+                                                        <span className="text-xs text-green-600 font-medium">
+                                                            -{(scan as any).resolved_violations}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <span className="text-xs text-muted-foreground">—</span>
+                                            )}
                                         </TableCell>
                                         <TableCell>
                                             <Badge

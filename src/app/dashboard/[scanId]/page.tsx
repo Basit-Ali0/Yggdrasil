@@ -190,8 +190,13 @@ export default function DashboardPage() {
             {/* Header with Export */}
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                    <h1 className="text-2xl font-semibold tracking-tight">
+                    <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
                         {auditName ? `${auditName} - Compliance Dashboard` : 'Compliance Dashboard'}
+                        {currentScan?.delta && (
+                            <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                                Rescan
+                            </Badge>
+                        )}
                     </h1>
                     <p className="mt-1 text-muted-foreground">
                         Scan results and compliance score for your audit.
@@ -257,6 +262,36 @@ export default function DashboardPage() {
                     icon={Users}
                 />
             </div>
+
+            {/* Delta Display - Compare to previous scan */}
+            {currentScan?.delta && (
+                <div className="flex items-center justify-center gap-4 py-3 px-4 bg-muted/50 rounded-lg border">
+                    <span className="text-sm text-muted-foreground">Compared to previous scan:</span>
+                    <div className="flex items-center gap-3">
+                        {currentScan.delta.new_count > 0 && (
+                            <div className="flex items-center gap-1.5">
+                                <span className="w-2 h-2 rounded-full bg-blue-500" />
+                                <span className="text-sm font-medium">{currentScan.delta.new_count} new</span>
+                            </div>
+                        )}
+                        {currentScan.delta.resolved_count > 0 && (
+                            <div className="flex items-center gap-1.5">
+                                <span className="w-2 h-2 rounded-full bg-green-500" />
+                                <span className="text-sm font-medium">{currentScan.delta.resolved_count} resolved</span>
+                            </div>
+                        )}
+                        {currentScan.delta.unchanged_count > 0 && (
+                            <div className="flex items-center gap-1.5">
+                                <span className="w-2 h-2 rounded-full bg-gray-400" />
+                                <span className="text-sm font-medium">{currentScan.delta.unchanged_count} unchanged</span>
+                            </div>
+                        )}
+                        {currentScan.delta.new_count === 0 && currentScan.delta.resolved_count === 0 && currentScan.delta.unchanged_count === 0 && (
+                            <span className="text-sm text-muted-foreground">No changes</span>
+                        )}
+                    </div>
+                </div>
+            )}
 
             {/* Main Content: Violations (left) + Sidebar (right) */}
             <div className="grid gap-6 lg:grid-cols-3">
@@ -384,7 +419,7 @@ export default function DashboardPage() {
                     initialScore={complianceScore}
                     completedAt={currentScan?.completed_at}
                 />
-                <PIIDashboardCard scanId={scanId} />
+                <PIIDashboardCard scanId={scanId} uploadId={currentScan?.upload_id} />
             </div>
             </div>
 
