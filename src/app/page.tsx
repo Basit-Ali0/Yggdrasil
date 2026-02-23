@@ -20,11 +20,19 @@ import {
 
 export default function LandingPage() {
     const router = useRouter();
-    const { isAuthenticated } = useAuthStore();
+    const { user, isAuthenticated } = useAuthStore();
 
     const handleGetStarted = () => {
         router.push(isAuthenticated() ? '/audit/new' : '/login');
     };
+
+    const handleSignOut = async () => {
+        const { signOut } = useAuthStore.getState();
+        await signOut();
+        router.refresh();
+    };
+
+    const userName = user?.user_metadata?.name || user?.email?.split('@')[0] || 'User';
 
     return (
         <div className="flex min-h-screen flex-col bg-background">
@@ -36,9 +44,18 @@ export default function LandingPage() {
                     </div>
                     <span className="text-lg font-semibold">Yggdrasil</span>
                 </div>
-                <Button variant="outline" onClick={() => router.push('/login')}>
-                    Sign In
-                </Button>
+                {isAuthenticated() ? (
+                    <div className="flex items-center gap-4">
+                        <span className="text-sm text-muted-foreground">Hi, {userName}</span>
+                        <Button variant="outline" size="sm" onClick={handleSignOut}>
+                            Sign Out
+                        </Button>
+                    </div>
+                ) : (
+                    <Button variant="outline" onClick={() => router.push('/login')}>
+                        Sign In
+                    </Button>
+                )}
             </header>
 
             {/* ── Hero ───────────────────────────────────────────── */}
@@ -64,13 +81,6 @@ export default function LandingPage() {
                         <Button size="lg" className="gap-2 px-8" onClick={handleGetStarted}>
                             Start an Audit
                             <ArrowRight className="h-4 w-4" />
-                        </Button>
-                        <Button
-                            size="lg"
-                            variant="outline"
-                            onClick={() => router.push('/login')}
-                        >
-                            Sign In
                         </Button>
                     </div>
                 </div>
