@@ -32,7 +32,7 @@ interface PIIState {
     error: string | null;
 
     scanForPII: (uploadId: string, scanId?: string) => Promise<void>;
-    fetchFindings: (scanId: string) => Promise<void>;
+    fetchFindings: (scanId: string, uploadId?: string) => Promise<void>;
     resolveFinding: (findingId: string, status: 'resolved' | 'ignored') => Promise<void>;
     reset: () => void;
 }
@@ -70,12 +70,14 @@ export const usePIIStore = create<PIIState>((set, get) => ({
         }
     },
 
-    fetchFindings: async (scanId) => {
+    fetchFindings: async (scanId, uploadId?: string) => {
         set({ isLoading: true, error: null });
         try {
-            const data = await api.get<PIIFindingsResponse>(
-                `/data/pii-findings?scan_id=${encodeURIComponent(scanId)}`,
-            );
+            let url = `/data/pii-findings?scan_id=${encodeURIComponent(scanId)}`;
+            if (uploadId) {
+                url += `&upload_id=${encodeURIComponent(uploadId)}`;
+            }
+            const data = await api.get<PIIFindingsResponse>(url);
             set({
                 findings: data.findings,
                 piiDetected: data.pii_detected,

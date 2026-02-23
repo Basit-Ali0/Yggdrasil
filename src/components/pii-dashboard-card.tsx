@@ -10,15 +10,16 @@ import { ShieldAlert } from 'lucide-react';
 
 interface PIIDashboardCardProps {
     scanId: string;
+    uploadId?: string;
 }
 
-export function PIIDashboardCard({ scanId }: PIIDashboardCardProps) {
+export function PIIDashboardCard({ scanId, uploadId }: PIIDashboardCardProps) {
     const { findings, piiDetected, fetchFindings, isLoading } = usePIIStore();
     const [dialogOpen, setDialogOpen] = useState(false);
 
     useEffect(() => {
-        fetchFindings(scanId);
-    }, [scanId, fetchFindings]);
+        fetchFindings(scanId, uploadId);
+    }, [scanId, uploadId, fetchFindings]);
 
     // Don't render if loading, no findings, or all resolved/ignored
     const openFindings = findings.filter(

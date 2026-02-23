@@ -74,10 +74,13 @@ export function ScoreHistoryChart({ scoreHistory, initialScore, completedAt }: S
         return points;
     }, [scoreHistory, initialScore, completedAt]);
 
-    // Only render when there are 2+ data points
-    if (data.length < 2) {
+    // Only render when there are data points
+    if (data.length < 1) {
         return null;
     }
+
+    // If only 1 point, still show chart but without the area fill
+    const isSinglePoint = data.length === 1;
 
     const minScore = Math.max(0, Math.floor(Math.min(...data.map((d) => d.score)) - 5));
     const maxScore = Math.min(100, Math.ceil(Math.max(...data.map((d) => d.score)) + 5));
