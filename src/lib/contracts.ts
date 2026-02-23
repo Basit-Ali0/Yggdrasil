@@ -59,6 +59,14 @@ export interface StartScanResponse {
 }
 
 // ── Screen 6 polling: GET /api/scan/:id ──────────────────────
+export interface ScanDelta {
+    new_count: number;
+    resolved_count: number;
+    unchanged_count: number;
+    previous_scan_id: string;
+    previous_violation_count: number;
+}
+
 export interface ScanStatusResponse {
     id: string;
     status: 'pending' | 'running' | 'completed' | 'failed';
@@ -83,6 +91,8 @@ export interface ScanStatusResponse {
     audit_id?: string;
     mapping_config?: Record<string, string>;
     temporal_scale?: number;
+    // Delta fields
+    delta?: ScanDelta | null;
 }
 
 // ── Screen 7: GET /api/violations/cases ──────────────────────
@@ -162,6 +172,7 @@ export interface ScanHistoryEntry {
     violation_count: number;
     new_violations: number;
     resolved_violations: number;
+    unchanged_count: number;
     status: string;
     created_at: string;
     audit_name?: string;
