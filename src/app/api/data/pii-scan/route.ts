@@ -3,7 +3,7 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { uploadStore } from '@/lib/upload-store';
+import { getUpload } from '@/lib/upload-store';
 import { geminiGenerateObject } from '@/lib/gemini';
 import { PIIDetectionResultSchema } from '@/lib/validators/pii';
 import { executePIIDetection } from '@/lib/engine/pii-executor';
@@ -45,8 +45,8 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // 1. Get data from uploadStore
-        const stored = uploadStore.get(upload_id);
+        // 1. Get data from durable-first upload store
+        const stored = await getUpload(request, upload_id);
         if (!stored) {
             return NextResponse.json(
                 { error: 'Not Found', message: 'Upload not found — may have expired' },

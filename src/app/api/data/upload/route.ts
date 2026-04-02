@@ -10,7 +10,7 @@ import { detectDataset, getTemporalScale, getDefaultMapping, getDefaultMappingWi
 import { geminiGenerateObject } from '@/lib/gemini';
 import { z } from 'zod';
 
-import { uploadStore } from '@/lib/upload-store';
+import { saveUpload } from '@/lib/upload-store';
 
 export async function POST(request: NextRequest) {
     try {
@@ -93,9 +93,9 @@ export async function POST(request: NextRequest) {
         // Per hard rules: Agent 6 (Clarification Questions) — if Gemini fails return [] silently
         // We skip calling Gemini for clarification in MVP to save API rate limits
 
-        // Store upload in memory
+        // Store upload (durable-first + in-memory fallback)
         const uploadId = uuid();
-        uploadStore.set(uploadId, { rows, headers, fileName: file.name });
+        await saveUpload(request, uploadId, { rows, headers, fileName: file.name });
 
         // Response per CONTRACTS.md
         return NextResponse.json({

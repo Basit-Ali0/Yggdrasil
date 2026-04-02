@@ -3,7 +3,7 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { uploadStore } from '@/lib/upload-store';
+import { hasUpload } from '@/lib/upload-store';
 
 export async function GET(
     request: NextRequest,
@@ -12,7 +12,7 @@ export async function GET(
     try {
         const { uploadId } = await params;
 
-        const available = uploadStore.has(uploadId);
+        const available = await hasUpload(request, uploadId);
 
         return NextResponse.json({ available });
 
