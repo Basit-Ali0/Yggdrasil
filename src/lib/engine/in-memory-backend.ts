@@ -147,10 +147,8 @@ export class InMemoryBackend {
             case '<':
                 return (value as number) < (cond.value as number);
             case '==':
-                // eslint-disable-next-line eqeqeq
                 return value == cond.value;
             case '!=':
-                // eslint-disable-next-line eqeqeq
                 return value != cond.value;
             case 'IN':
                 return Array.isArray(cond.value) && cond.value.includes(value);
