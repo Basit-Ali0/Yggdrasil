@@ -1,7 +1,7 @@
 // ============================================================
 // POST /api/scan/run — Trigger compliance scan
 // GET  /api/scan/run — not used, see /api/scan/[id]
-// Response: { scan_id, status: "running" } per CONTRACTS.md
+// Response reports the true persisted scan status.
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -10,8 +10,8 @@ import { RunScanSchema } from '@/lib/validators';
 import { RuleExecutor } from '@/lib/engine/rule-executor';
 import { calculateComplianceScore } from '@/lib/engine/scoring';
 import { v4 as uuid } from 'uuid';
-import { uploadStore } from '@/lib/upload-store';
-import { mappingStore } from '@/lib/mapping-store';
+import { getUpload } from '@/lib/upload-store';
+import { getMapping } from '@/lib/mapping-store';
 import { Rule } from '@/lib/types';
 
 export async function POST(request: NextRequest) {
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
         const supabase = await getSupabaseForRequest(request);
 
         // 1. Get mapping config
-        const mapping = mappingStore.get(mapping_id);
+        const mapping = await getMapping(request, mapping_id);
         if (!mapping) {
             return NextResponse.json(
                 { error: 'NOT_FOUND', message: 'Mapping not found. Confirm mapping first.' },
@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
         }
 
         // 2. Get uploaded data
-        const upload = uploadStore.get(upload_id);
+        const upload = await getUpload(request, upload_id);
         if (!upload) {
             return NextResponse.json(
                 { error: 'NOT_FOUND', message: 'Upload not found. Upload data first.' },
@@ -178,10 +178,10 @@ export async function POST(request: NextRequest) {
             console.error('Scan update error:', scanUpdateErr);
         }
 
-        // Return initial response per CONTRACTS.md
+        // The scan currently runs synchronously, so report the actual final status.
         return NextResponse.json({
             scan_id: scanId,
-            status: 'running',
+            status: 'completed',
         });
 
     } catch (err) {
@@ -193,7 +193,7 @@ export async function POST(request: NextRequest) {
         }
         console.error('POST /api/scan/run error:', err);
         return NextResponse.json(
-            { error: 'INTERNAL_ERROR', message: 'An unexpected error occurred' },
+            { error: 'INTERNAL_ERROR', message: 'An unexpected error occurred', status: 'failed' },
             { status: 500 }
         );
     }

@@ -55,7 +55,7 @@ export interface StartScanRequest {
 
 export interface StartScanResponse {
     scan_id: string;
-    status: 'running';
+    status: 'running' | 'completed';
 }
 
 // ── Screen 6 polling: GET /api/scan/:id ──────────────────────
