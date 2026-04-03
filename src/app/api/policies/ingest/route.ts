@@ -5,34 +5,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseForRequest, getUserIdFromRequest, AuthError } from '@/lib/supabase';
 import { geminiGenerateObject } from '@/lib/gemini';
+import {
+    buildRuleRowsFromExtraction,
+    insertPolicyRuleRows,
+} from '@/lib/policy-rule-persistence';
+import { ExtractionResultSchema } from '@/lib/validators/extracted-policy-rules';
+import { logStructured } from '@/lib/structured-log';
 import { v4 as uuid } from 'uuid';
-import { z } from 'zod';
-
-// Zod schema for extracted rules — matches LLMSystemPrompts.md
-const ExtractedRuleSchema = z.object({
-    rule_id: z.string(),
-    name: z.string(),
-    description: z.string(),
-    type: z.string(),
-    severity: z.enum(['CRITICAL', 'HIGH', 'MEDIUM']),
-    threshold: z.number().nullable().optional(),
-    time_window: z.number().nullable().optional(),
-    conditions: z.object({
-        field: z.string(),
-        operator: z.string(),
-        value: z.any(),
-    }),
-    policy_excerpt: z.string(),
-    policy_section: z.string().optional(),
-    requires_clarification: z.boolean().optional(),
-    clarification_notes: z.string().optional(),
-});
-
-const ExtractionResultSchema = z.object({
-    policy_name: z.string(),
-    rules: z.array(ExtractedRuleSchema),
-    ambiguous_sections: z.array(z.string()).optional(),
-});
 
 export async function POST(request: NextRequest) {
     try {
@@ -129,25 +108,26 @@ Strict Requirements:
             );
         }
 
-        // Insert rules
-        const ruleRows = result.rules.map((rule) => ({
-            id: uuid(),
-            policy_id: policyId,
-            rule_id: rule.rule_id,
-            name: rule.name,
-            type: rule.type,
-            description: rule.description,
-            threshold: rule.threshold ?? null,
-            time_window: rule.time_window ?? null,
-            severity: rule.severity,
-            conditions: rule.conditions,
-            policy_excerpt: rule.policy_excerpt,
-            policy_section: rule.policy_section ?? null,
-            is_active: true,
-        }));
+        const { rows: ruleRows, validation: ruleValidation } = buildRuleRowsFromExtraction(
+            result.rules,
+            policyId,
+            uuid
+        );
+
+        const quarantined = ruleValidation.filter((v) => !v.valid).length;
+        if (quarantined > 0) {
+            logStructured('policies/ingest', 'rules_quarantined', {
+                policy_id: policyId,
+                quarantined_count: quarantined,
+                total_rules: ruleValidation.length,
+            });
+        }
 
         if (ruleRows.length > 0) {
-            await supabase.from('rules').insert(ruleRows);
+            const { error: ingestRulesErr } = await insertPolicyRuleRows(supabase, ruleRows);
+            if (ingestRulesErr) {
+                console.error('[ingest] Rules insert error:', ingestRulesErr);
+            }
         }
 
         return NextResponse.json({
@@ -157,6 +137,7 @@ Strict Requirements:
                 rules: result.rules,
                 created_at: new Date().toISOString(),
             },
+            rule_validation: ruleValidation,
         }, { status: 201 });
 
     } catch (err) {
