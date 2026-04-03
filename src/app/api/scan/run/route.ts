@@ -12,7 +12,13 @@ import { calculateComplianceScore } from '@/lib/engine/scoring';
 import { v4 as uuid } from 'uuid';
 import { getUpload } from '@/lib/upload-store';
 import { getMapping } from '@/lib/mapping-store';
+import {
+    evaluateMappingReadiness,
+    isMappingBlockedForScan,
+} from '@/lib/engine/mapping-readiness';
+import { filterExecutableRules } from '@/lib/engine/rule-validation';
 import { Rule } from '@/lib/types';
+import { logStructured } from '@/lib/structured-log';
 
 export async function POST(request: NextRequest) {
     try {
@@ -62,20 +68,76 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Map DB rule rows to Rule interface
-        const rules: Rule[] = dbRules.map((r: any) => ({
+        const mappedRules: Rule[] = dbRules.map((r: any) => ({
             rule_id: r.rule_id,
             name: r.name,
             type: r.type,
             severity: r.severity,
-            threshold: r.threshold ? parseFloat(r.threshold) : null,
-            time_window: r.time_window,
+            threshold: r.threshold != null ? parseFloat(String(r.threshold)) : null,
+            time_window: (() => {
+                if (r.time_window == null || r.time_window === '') return null;
+                const n = parseInt(String(r.time_window), 10);
+                return Number.isFinite(n) ? n : null;
+            })(),
             conditions: r.conditions,
             policy_excerpt: r.policy_excerpt ?? '',
             policy_section: r.policy_section ?? '',
             is_active: r.is_active,
             description: r.description,
         }));
+
+        const rules = filterExecutableRules(mappedRules);
+        if (mappedRules.length > rules.length) {
+            console.warn(
+                `[scan/run] skipped ${mappedRules.length - rules.length} non-executable active rule(s) for policy ${policy_id}`
+            );
+        }
+
+        if (!rules.length) {
+            return NextResponse.json(
+                {
+                    error: 'NOT_FOUND',
+                    message:
+                        'No executable rules found for this policy. Check rule_validation on ingest or activate valid rules only.',
+                },
+                { status: 404 }
+            );
+        }
+
+        const uploadHeaders =
+            upload.headers.length > 0
+                ? upload.headers
+                : upload.rows[0]
+                  ? Object.keys(upload.rows[0])
+                  : [];
+
+        const mappingReadiness = evaluateMappingReadiness({
+            rules,
+            mapping: mapping.mapping_config,
+            headers: uploadHeaders,
+            sampleRows: upload.rows,
+        });
+
+        if (isMappingBlockedForScan(mappingReadiness)) {
+            logStructured('scan/run', 'mapping_blocked', {
+                policy_id,
+                upload_id,
+                missing_required: mappingReadiness.missing_required,
+                invalid_columns: mappingReadiness.invalid_columns,
+            });
+            return NextResponse.json(
+                {
+                    error: 'MAPPING_INCOMPLETE',
+                    message:
+                        'Required column mappings are missing or point to columns that are not in this upload.',
+                    details: {
+                        missing_required: mappingReadiness.missing_required,
+                        invalid_columns: mappingReadiness.invalid_columns,
+                    },
+                },
+                { status: 400 }
+            );
+        }
 
         // 4. Create scan record (status: running)
         const scanId = uuid();
@@ -110,21 +172,37 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // 5. Run scan synchronously (< 5s for 50K rows)
-        const executor = new RuleExecutor();
-        const { violations, rulesProcessed, rulesTotal } = executor.executeAll(
-            rules,
-            upload.rows,
-            {
-                temporalScale: mapping.temporal_scale,
-                sampleLimit: 50000,
-                columnMapping: mapping.mapping_config,
-            }
-        );
+        // 5. Run scan (in-memory or DuckDB per backend-selection)
+        const executor = new RuleExecutor({ rowCount: upload.rows.length });
+        const {
+            violations,
+            rulesProcessed,
+            rulesTotal,
+            executionBackend,
+            executionReason,
+            sampled,
+            effectiveRowCount,
+        } = await executor.executeAll(rules, upload.rows, {
+            temporalScale: mapping.temporal_scale,
+            sampleLimit: 50000,
+            columnMapping: mapping.mapping_config,
+        });
+        logStructured('scan/run', 'scan_completed', {
+            scan_id: scanId,
+            policy_id,
+            execution_backend: executionBackend,
+            execution_reason: executionReason,
+            rules_processed: rulesProcessed,
+            rules_total: rulesTotal,
+            violation_count: violations.length,
+            row_count: upload.rows.length,
+            effective_row_count: effectiveRowCount,
+            sampled,
+        });
 
-        // 6. Calculate compliance score
+        // 6. Calculate compliance score using actual rows processed (unsampled for DuckDB)
         const score = calculateComplianceScore(
-            Math.min(upload.rows.length, 50000),
+            effectiveRowCount,
             violations.map((v) => ({ severity: v.severity, status: v.status }))
         );
 
