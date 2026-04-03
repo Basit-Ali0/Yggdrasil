@@ -30,6 +30,13 @@ export interface Rule {
         breach_example?: string;
         article_reference?: string;
     };
+    /** Set when rules row includes P1-14 validation columns (extracted policies). */
+    validation_status?: 'valid' | 'invalid' | null;
+    validation_issues?: Array<{
+        category: string;
+        message: string;
+        path?: string;
+    }> | null;
 }
 
 export interface RuleCondition {
