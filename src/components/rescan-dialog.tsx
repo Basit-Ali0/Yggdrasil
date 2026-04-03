@@ -22,6 +22,54 @@ import type {
     ConfirmMappingResponse,
 } from '@/lib/contracts';
 
+/** Parse server error messages into operator-friendly guidance. */
+function classifyRescanError(msg: string | null): { title: string; detail: string; canRetry: boolean } {
+    if (!msg) return { title: 'An unexpected error occurred.', detail: '', canRetry: true };
+
+    const m = msg.toLowerCase();
+
+    if (
+        m.includes('mapping') ||
+        m.includes('column') ||
+        m.includes('mapping_incomplete') ||
+        m.includes('missing') && m.includes('field')
+    ) {
+        return {
+            title: 'Column mapping issue',
+            detail: 'The saved mapping references columns that are missing or invalid. Re-upload your dataset and re-map the columns before rescanning.',
+            canRetry: false,
+        };
+    }
+
+    if (
+        m.includes('upload') ||
+        m.includes('not found') ||
+        m.includes('no longer cached') ||
+        m.includes('dataset')
+    ) {
+        return {
+            title: 'Dataset no longer available',
+            detail: 'Your upload is no longer cached on the server. Use the re-upload option below to provide the CSV file again.',
+            canRetry: false,
+        };
+    }
+
+    if (
+        m.includes('executable') ||
+        m.includes('no active rules') ||
+        m.includes('no rules') ||
+        (m.includes('rules') && (m.includes('none') || m.includes('empty')))
+    ) {
+        return {
+            title: 'No executable rules',
+            detail: 'No valid, active rules were found for this policy. Go to the Rules tab and make sure at least one rule is enabled and has no validation errors.',
+            canRetry: false,
+        };
+    }
+
+    return { title: msg, detail: '', canRetry: true };
+}
+
 interface RescanDialogProps {
     scanId: string;
     policyId: string;
@@ -233,14 +281,32 @@ export function RescanDialog({ scanId, policyId, open, onOpenChange }: RescanDia
                     )}
 
                     {/* Error state */}
-                    {step === 'error' && (
-                        <div className="flex flex-col items-center gap-3 py-4">
-                            <AlertCircle className="h-8 w-8 text-destructive" />
-                            <p className="text-sm text-destructive text-center">
-                                {errorMsg || 'An unexpected error occurred.'}
-                            </p>
-                        </div>
-                    )}
+                    {step === 'error' && (() => {
+                        const { title, detail, canRetry } = classifyRescanError(errorMsg);
+                        return (
+                            <div className="flex flex-col items-start gap-3 py-4">
+                                <div className="flex items-start gap-3 w-full">
+                                    <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-destructive" />
+                                    <div>
+                                        <p className="text-sm font-medium text-destructive">
+                                            {title}
+                                        </p>
+                                        {detail && (
+                                            <p className="mt-1 text-xs text-muted-foreground">
+                                                {detail}
+                                            </p>
+                                        )}
+                                        {!canRetry && (
+                                            <p className="mt-2 text-xs text-muted-foreground">
+                                                Use the re-upload option or fix the issue before
+                                                retrying.
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })()}
                 </div>
 
                 <DialogFooter>
@@ -260,26 +326,43 @@ export function RescanDialog({ scanId, policyId, open, onOpenChange }: RescanDia
                         </div>
                     )}
 
-                    {step === 'error' && (
-                        <div className="flex w-full gap-2">
-                            <Button
-                                variant="outline"
-                                className="flex-1"
-                                onClick={() => onOpenChange(false)}
-                            >
-                                Close
-                            </Button>
-                            <Button
-                                className="flex-1"
-                                onClick={() => {
-                                    setStep('checking');
-                                    setErrorMsg(null);
-                                }}
-                            >
-                                Retry
-                            </Button>
-                        </div>
-                    )}
+                    {step === 'error' && (() => {
+                        const { canRetry } = classifyRescanError(errorMsg);
+                        return (
+                            <div className="flex w-full gap-2">
+                                <Button
+                                    variant="outline"
+                                    className="flex-1"
+                                    onClick={() => onOpenChange(false)}
+                                >
+                                    Close
+                                </Button>
+                                {canRetry ? (
+                                    <Button
+                                        className="flex-1"
+                                        onClick={() => {
+                                            setStep('checking');
+                                            setErrorMsg(null);
+                                        }}
+                                    >
+                                        Retry
+                                    </Button>
+                                ) : (
+                                    <Button
+                                        variant="outline"
+                                        className="flex-1"
+                                        onClick={() => {
+                                            setStep('reupload');
+                                            setErrorMsg(null);
+                                        }}
+                                    >
+                                        <Upload className="mr-2 h-4 w-4" />
+                                        Re-upload
+                                    </Button>
+                                )}
+                            </div>
+                        );
+                    })()}
 
                     {(step === 'checking' || step === 'uploading' || step === 'scanning') && (
                         <Button variant="outline" className="w-full" disabled>
