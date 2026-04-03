@@ -49,7 +49,7 @@ interface AuditState {
     setStep: (step: AuditStep) => void;
     setAuditName: (name: string) => void;
     setPolicyType: (type: 'aml' | 'gdpr' | 'soc2') => void;
-    toggleRule: (ruleId: string) => void;
+    toggleRule: (ruleId: string) => Promise<void>;
     reset: () => void;
     clearError: () => void;
 }
@@ -159,11 +159,35 @@ export const useAuditStore = create<AuditState>((set, get) => ({
     setAuditName: (name) => set({ auditName: name }),
     setPolicyType: (type) => set({ policyType: type }),
 
-    toggleRule: (ruleId) => {
-        const rules = get().rules.map((r) =>
-            r.rule_id === ruleId ? { ...r, is_active: !r.is_active } : r,
-        );
-        set({ rules });
+    toggleRule: async (ruleId) => {
+        const { policyId, rules } = get();
+        const rule = rules.find((r) => r.rule_id === ruleId);
+        if (!rule) return;
+
+        const nextActive = !rule.is_active;
+
+        if (policyId) {
+            try {
+                await api.patch(`/policies/${policyId}/rules`, {
+                    rule_id: ruleId,
+                    is_active: nextActive,
+                });
+            } catch (err) {
+                set({
+                    error:
+                        err instanceof Error
+                            ? err.message
+                            : 'Failed to update rule on server',
+                });
+                return;
+            }
+        }
+
+        set({
+            rules: rules.map((r) =>
+                r.rule_id === ruleId ? { ...r, is_active: nextActive } : r,
+            ),
+        });
     },
 
     reset: () => set(initialState),
