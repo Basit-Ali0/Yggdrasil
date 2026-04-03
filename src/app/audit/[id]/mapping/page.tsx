@@ -1,19 +1,45 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuditStore } from '@/stores/audit-store';
+import { api } from '@/lib/api';
+import type { MappingReadinessResponse } from '@/lib/contracts';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { AlertCircle, ArrowRight, Pencil, Check, Info, Loader2 } from 'lucide-react';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+    Collapsible,
+    CollapsibleContent,
+    CollapsibleTrigger,
+} from '@/components/ui/collapsible';
+import {
+    AlertCircle,
+    ArrowRight,
+    Pencil,
+    Check,
+    Info,
+    Loader2,
+    ChevronDown,
+    ShieldAlert,
+} from 'lucide-react';
 
 export default function MappingBridgePage() {
     const router = useRouter();
     const params = useParams();
-    const { uploadData, confirmMapping, startScan, isMapping, error, clearError } = useAuditStore();
+    const {
+        uploadData,
+        confirmMapping,
+        startScan,
+        isMapping,
+        error,
+        clearError,
+        policyId,
+        uploadId,
+    } = useAuditStore();
 
     const [mappingConfig, setMappingConfig] = useState<Record<string, string>>(
         uploadData?.suggested_mapping ?? {},
@@ -21,6 +47,46 @@ export default function MappingBridgePage() {
     const [editingField, setEditingField] = useState<string | null>(null);
     const [answers, setAnswers] = useState<Array<{ question_id: string; answer: string }>>([]);
     const [isStarting, setIsStarting] = useState(false);
+    const [readiness, setReadiness] = useState<MappingReadinessResponse | null>(null);
+    const [readinessLoading, setReadinessLoading] = useState(false);
+    const [readinessError, setReadinessError] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!policyId || !uploadId || !uploadData) return;
+
+        let cancelled = false;
+        const timer = setTimeout(async () => {
+            setReadinessLoading(true);
+            try {
+                const data = await api.post<MappingReadinessResponse>('/data/mapping/readiness', {
+                    policy_id: policyId,
+                    upload_id: uploadId,
+                    mapping_config: mappingConfig,
+                    mapping_confidence: uploadData.mapping_confidence,
+                });
+                if (!cancelled) {
+                    setReadiness(data);
+                    setReadinessError(null);
+                }
+            } catch (e) {
+                if (!cancelled) {
+                    setReadiness(null);
+                    setReadinessError(
+                        e instanceof Error ? e.message : 'Could not evaluate mapping readiness',
+                    );
+                }
+            } finally {
+                if (!cancelled) setReadinessLoading(false);
+            }
+        }, 400);
+
+        return () => {
+            cancelled = true;
+            clearTimeout(timer);
+        };
+    }, [policyId, uploadId, mappingConfig, uploadData]);
+
+    const scanBlocked = readiness?.state === 'blocked';
 
     if (!uploadData) {
         return (
@@ -119,6 +185,137 @@ export default function MappingBridgePage() {
                     {uploadData.temporal_scale === 24 ? ' (daily → hourly)' : ''}
                 </span>
             </div>
+
+            {/* Pre-scan readiness (server + active policy rules) */}
+            <Card
+                className={
+                    readiness?.state === 'blocked'
+                        ? 'border-destructive/40 bg-destructive/5'
+                        : readiness?.state === 'warning'
+                          ? 'border-amber/40 bg-amber/5'
+                          : ''
+                }
+            >
+                <CardHeader className="pb-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <CardTitle className="text-base">Scan readiness</CardTitle>
+                        {readinessLoading && (
+                            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                                Checking…
+                            </span>
+                        )}
+                        {!readinessLoading && readiness && (
+                            <Badge
+                                variant={
+                                    readiness.state === 'ready'
+                                        ? 'default'
+                                        : readiness.state === 'warning'
+                                          ? 'secondary'
+                                          : 'destructive'
+                                }
+                                className="font-normal"
+                            >
+                                {readiness.state === 'ready' && 'Ready to scan'}
+                                {readiness.state === 'warning' && 'Ready with warnings'}
+                                {readiness.state === 'blocked' && 'Blocked'}
+                            </Badge>
+                        )}
+                    </div>
+                </CardHeader>
+                <CardContent className="space-y-3 text-sm">
+                    {readinessError && (
+                        <p className="text-destructive">{readinessError}</p>
+                    )}
+                    {readiness && (
+                        <>
+                            {readiness.missing_required.length > 0 && (
+                                <div className="flex gap-2 rounded-md border border-destructive/30 bg-background/80 p-3">
+                                    <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                                    <div>
+                                        <p className="font-medium text-destructive">
+                                            Missing required mappings
+                                        </p>
+                                        <ul className="mt-1 list-inside list-disc text-muted-foreground">
+                                            {readiness.missing_required.map((f) => (
+                                                <li key={f}>{f}</li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                </div>
+                            )}
+                            {readiness.invalid_columns.length > 0 && (
+                                <div className="rounded-md border border-destructive/30 bg-background/80 p-3">
+                                    <p className="font-medium text-destructive">
+                                        Mapped columns not in this file
+                                    </p>
+                                    <ul className="mt-1 list-inside list-disc text-muted-foreground">
+                                        {readiness.invalid_columns.map((line) => (
+                                            <li key={line}>{line}</li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+                            {readiness.warnings.length > 0 && (
+                                <div className="rounded-md border border-amber/30 bg-background/80 p-3">
+                                    <p className="font-medium text-amber">Warnings</p>
+                                    <ul className="mt-1 list-inside list-disc text-muted-foreground">
+                                        {readiness.warnings.map((w, i) => (
+                                            <li key={i}>{w}</li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
+                            {readiness.required_fields.length > 0 && (
+                                <p className="text-muted-foreground">
+                                    <span className="font-medium text-foreground">
+                                        Required for current rules:{' '}
+                                    </span>
+                                    {readiness.required_fields.join(', ')}
+                                </p>
+                            )}
+                            <Collapsible>
+                                <CollapsibleTrigger className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground">
+                                    <ChevronDown className="h-3 w-3" />
+                                    Rule → field dependencies
+                                </CollapsibleTrigger>
+                                <CollapsibleContent className="mt-2 space-y-2">
+                                    {readiness.rule_dependencies
+                                        .filter((r) => r.is_active)
+                                        .map((r) => (
+                                            <div
+                                                key={r.rule_id}
+                                                className="rounded border bg-muted/30 px-2 py-1.5 font-mono-code text-xs"
+                                            >
+                                                <span className="text-muted-foreground">
+                                                    {r.rule_id}
+                                                </span>
+                                                <span className="mx-2 text-border">·</span>
+                                                {r.required_fields.join(', ')}
+                                            </div>
+                                        ))}
+                                </CollapsibleContent>
+                            </Collapsible>
+                            {readiness.sample_normalized_rows.length > 0 && (
+                                <div>
+                                    <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                                        Sample normalized rows
+                                    </p>
+                                    <ScrollArea className="h-[140px] w-full rounded-md border">
+                                        <pre className="p-3 font-mono-code text-[11px] leading-relaxed">
+                                            {JSON.stringify(
+                                                readiness.sample_normalized_rows,
+                                                null,
+                                                2,
+                                            )}
+                                        </pre>
+                                    </ScrollArea>
+                                </div>
+                            )}
+                        </>
+                    )}
+                </CardContent>
+            </Card>
 
             {/* Section A: Column Mapping */}
             <Card>
@@ -257,7 +454,7 @@ export default function MappingBridgePage() {
                         variant="outline"
                         size="lg"
                         onClick={handleSkipAndScan}
-                        disabled={isMapping || isStarting}
+                        disabled={isMapping || isStarting || scanBlocked || readinessLoading}
                     >
                         Skip All & Scan
                     </Button>
@@ -266,7 +463,7 @@ export default function MappingBridgePage() {
                     size="lg"
                     className="gap-2"
                     onClick={handleApproveAndScan}
-                    disabled={isMapping || isStarting}
+                    disabled={isMapping || isStarting || scanBlocked || readinessLoading}
                 >
                     {isMapping || isStarting ? (
                         <>
