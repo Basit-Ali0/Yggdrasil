@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
     output: 'standalone',
-    serverExternalPackages: ['unpdf'],
+    serverExternalPackages: ['unpdf', 'duckdb'],
     env: {
         NEXT_PUBLIC_SUPABASE_URL: 'https://wfcxaekocpfwkydphbtq.supabase.co',
         NEXT_PUBLIC_SUPABASE_ANON_KEY: 'sb_publishable_bYoGnnymUJmLekgnCov3DA_yMh740th',
