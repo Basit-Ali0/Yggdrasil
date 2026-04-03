@@ -13,6 +13,8 @@ const eslintConfig = [
       '.next/**',
       'node_modules/**',
       'stitch_autonomous_scan_progress/**',
+      'playwright-report/**',
+      'test-results/**',
     ],
   },
 ];
