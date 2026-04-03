@@ -114,7 +114,7 @@ export default function ExportPage() {
 
                                     <div className="rounded-lg border p-4">
                                         <p className="mb-3 text-sm font-medium">
-                                            Download or share this scan's report:
+                                            {'Download or share this scan\u2019s report:'}
                                         </p>
                                         <ExportActions
                                             scanId={selectedScan.id}
@@ -126,7 +126,7 @@ export default function ExportPage() {
                                     </div>
 
                                     <p className="text-xs text-muted-foreground">
-                                        Use "Print as PDF" for a branded Yggdrasil audit trail document.
+                                        {'Use \u201cPrint as PDF\u201d for a branded Yggdrasil audit trail document.'}
                                     </p>
                                 </div>
                             ) : (
