@@ -29,6 +29,14 @@ export const ConfirmMappingSchema = z.object({
     ).default([]),
 });
 
+// ── POST /api/data/mapping/readiness ─────────────────────────
+export const MappingReadinessRequestSchema = z.object({
+    policy_id: z.string().uuid(),
+    upload_id: z.string().uuid(),
+    mapping_config: z.record(z.string(), z.string()),
+    mapping_confidence: z.record(z.string(), z.number()).optional(),
+});
+
 // ── POST /api/scan/run ───────────────────────────────────────
 export const RunScanSchema = z.object({
     audit_id: z.string().uuid(),
