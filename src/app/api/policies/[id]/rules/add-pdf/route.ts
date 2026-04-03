@@ -5,34 +5,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseForRequest, getUserIdFromRequest, AuthError } from '@/lib/supabase';
 import { geminiGenerateObject } from '@/lib/gemini';
+import {
+    buildRuleRowsFromExtraction,
+    buildExistingRuleIdentitySet,
+    buildRuleIdentityKey,
+    insertPolicyRuleRows,
+} from '@/lib/policy-rule-persistence';
+import { ExtractionResultSchema } from '@/lib/validators/extracted-policy-rules';
+import { logStructured } from '@/lib/structured-log';
 import { v4 as uuid } from 'uuid';
-import { z } from 'zod';
-
-// Zod schema for extracted rules — matches /api/policies/ingest
-const ExtractedRuleSchema = z.object({
-    rule_id: z.string(),
-    name: z.string(),
-    description: z.string(),
-    type: z.string(),
-    severity: z.enum(['CRITICAL', 'HIGH', 'MEDIUM']),
-    threshold: z.number().nullable().optional(),
-    time_window: z.number().nullable().optional(),
-    conditions: z.object({
-        field: z.string(),
-        operator: z.string(),
-        value: z.any(),
-    }),
-    policy_excerpt: z.string(),
-    policy_section: z.string().optional(),
-    requires_clarification: z.boolean().optional(),
-    clarification_notes: z.string().optional(),
-});
-
-const ExtractionResultSchema = z.object({
-    policy_name: z.string(),
-    rules: z.array(ExtractedRuleSchema),
-    ambiguous_sections: z.array(z.string()).optional(),
-});
 
 export async function POST(
     request: NextRequest,
@@ -101,10 +82,10 @@ Strict Requirements:
         await getUserIdFromRequest(request);
         const supabase = await getSupabaseForRequest(request);
 
-        // Get existing rule_ids for this policy to avoid duplicates
+        // Fetch existing rules with all fields needed for identity-key deduplication
         const { data: existingRules, error: existingError } = await supabase
             .from('rules')
-            .select('rule_id')
+            .select('rule_id, type, conditions, threshold, time_window')
             .eq('policy_id', policyId);
 
         if (existingError) {
@@ -115,35 +96,55 @@ Strict Requirements:
             );
         }
 
-        const existingRuleIds = new Set((existingRules ?? []).map((r: any) => r.rule_id));
+        // Build identity keys from existing rules for normalized deduplication
+        const existingIdentityKeys = buildExistingRuleIdentitySet(existingRules ?? []);
 
-        // Filter out duplicates
-        const newRules = result.rules.filter(rule => !existingRuleIds.has(rule.rule_id));
+        // Normalize + validate all extracted rules first, then deduplicate by identity key
+        const { rows: allRows, validation: allValidation } = buildRuleRowsFromExtraction(
+            result.rules,
+            policyId,
+            uuid
+        );
 
-        if (newRules.length === 0) {
-            return NextResponse.json({ added_count: 0, rules: [] });
+        const ruleRows: typeof allRows = [];
+        const ruleValidation: typeof allValidation = [];
+        const skippedRuleIds: string[] = [];
+        const insertedRules: typeof result.rules = [];
+
+        for (let i = 0; i < allRows.length; i++) {
+            const key = buildRuleIdentityKey(allRows[i] as any);
+            if (existingIdentityKeys.has(key)) {
+                skippedRuleIds.push(allValidation[i].rule_id);
+            } else {
+                ruleRows.push(allRows[i]);
+                ruleValidation.push(allValidation[i]);
+                insertedRules.push(result.rules[i]);
+                // Prevent duplicates within the same add-pdf request payload as well.
+                existingIdentityKeys.add(key);
+            }
         }
 
-        // Insert new rules
-        const ruleRows = newRules.map((rule) => ({
-            id: uuid(),
-            policy_id: policyId,
-            rule_id: rule.rule_id,
-            name: rule.name,
-            type: rule.type,
-            description: rule.description,
-            threshold: rule.threshold ?? null,
-            time_window: rule.time_window ?? null,
-            severity: rule.severity,
-            conditions: rule.conditions,
-            policy_excerpt: rule.policy_excerpt,
-            policy_section: rule.policy_section ?? null,
-            is_active: true,
-        }));
+        if (ruleRows.length === 0) {
+            return NextResponse.json({
+                added_count: 0,
+                inserted_valid: 0,
+                inserted_quarantined: 0,
+                skipped_count: skippedRuleIds.length,
+                skipped_rule_ids: skippedRuleIds,
+                rules: [],
+            });
+        }
 
-        const { error: insertError } = await supabase
-            .from('rules')
-            .insert(ruleRows);
+        const quarantined = ruleValidation.filter((v) => !v.valid).length;
+        if (quarantined > 0) {
+            logStructured('policies/add-pdf', 'rules_quarantined', {
+                policy_id: policyId,
+                quarantined_count: quarantined,
+                total_rules: ruleValidation.length,
+            });
+        }
+
+        const { error: insertError } = await insertPolicyRuleRows(supabase, ruleRows);
 
         if (insertError) {
             console.error('Rules insert error:', insertError);
@@ -171,7 +172,7 @@ Strict Requirements:
         const { error: policyError } = await supabase
             .from('policies')
             .update({
-                rules_count: (policy.rules_count ?? 0) + newRules.length,
+                rules_count: (policy.rules_count ?? 0) + ruleRows.length,
                 updated_at: new Date().toISOString(),
             })
             .eq('id', policyId);
@@ -180,9 +181,15 @@ Strict Requirements:
             console.error('Policy update error:', policyError);
         }
 
+        const insertedValid = ruleValidation.filter((v) => v.valid).length;
         return NextResponse.json({
-            added_count: newRules.length,
-            rules: newRules,
+            added_count: ruleRows.length,
+            inserted_valid: insertedValid,
+            inserted_quarantined: quarantined,
+            skipped_count: skippedRuleIds.length,
+            skipped_rule_ids: skippedRuleIds,
+            rules: insertedRules,
+            rule_validation: ruleValidation,
         });
 
     } catch (err) {
