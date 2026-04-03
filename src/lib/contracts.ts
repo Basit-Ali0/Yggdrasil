@@ -4,6 +4,7 @@
 // ============================================================
 
 import type { Rule, Violation, ClarificationQuestion } from './types';
+import type { RawExtractedRule } from './validators/extracted-policy-rules';
 
 // ── Screen 2 → 3: POST /api/audits ──────────────────────────
 export interface CreateAuditRequest {
@@ -42,6 +43,65 @@ export interface ConfirmMappingRequest {
 export interface ConfirmMappingResponse {
     mapping_id: string;
     ready_to_scan: boolean;
+}
+
+// ── POST /api/data/mapping/readiness ───────────────────────
+export type MappingReadinessState = 'ready' | 'warning' | 'blocked';
+
+export interface MappingReadinessRuleDependency {
+    rule_id: string;
+    rule_name: string;
+    is_active: boolean;
+    required_fields: string[];
+}
+
+export interface MappingReadinessResponse {
+    state: MappingReadinessState;
+    missing_required: string[];
+    invalid_columns: string[];
+    warnings: string[];
+    required_fields: string[];
+    rule_dependencies: MappingReadinessRuleDependency[];
+    sample_normalized_rows: Record<string, unknown>[];
+}
+
+/** Per-rule engine validation (ingest, add-pdf, generate-rules). */
+export interface RuleValidationIssue {
+    category: string;
+    message: string;
+    path?: string;
+}
+
+export interface RuleValidationEntry {
+    rule_id: string;
+    valid: boolean;
+    issues: RuleValidationIssue[];
+}
+
+export interface PolicyWithRulesPayload {
+    id: string;
+    name: string;
+    rules: RawExtractedRule[];
+    created_at: string;
+}
+
+export interface PolicyExtractResponse {
+    policy: PolicyWithRulesPayload;
+    rule_validation: RuleValidationEntry[];
+}
+
+/** POST /api/policies/:id/rules/add-pdf */
+export interface PolicyAddPdfRulesResponse {
+    added_count: number;
+    /** Rules that passed engine validation and are active. */
+    inserted_valid: number;
+    /** Rules inserted but quarantined (is_active: false) due to validation issues. */
+    inserted_quarantined: number;
+    /** Rules skipped because an identical rule (same normalized identity key) already exists. */
+    skipped_count: number;
+    skipped_rule_ids: string[];
+    rules: RawExtractedRule[];
+    rule_validation?: RuleValidationEntry[];
 }
 
 // ── Screen 5 → 6: POST /api/scan/run ────────────────────────
