@@ -13,24 +13,10 @@ import {
     generateExplanation,
     generateWindowedExplanation,
 } from './explainability';
+import type { ExecutionBackend } from './execution-backend';
+import type { ViolationResult } from './violation-result';
 
-export interface ViolationResult {
-    id: string;
-    rule_id: string;
-    rule_name: string;
-    severity: 'CRITICAL' | 'HIGH' | 'MEDIUM';
-    record_id: string;
-    account: string;
-    amount: number;
-    transaction_type: string;
-    evidence: Record<string, any>;
-    threshold: number;
-    actual_value: number;
-    policy_excerpt: string;
-    policy_section: string;
-    explanation: string;
-    status: 'pending';
-}
+export type { ViolationResult } from './violation-result';
 
 /**
  * Pre-filter records to amount >= 8000 per RuleEngine.md hard rule.
@@ -50,8 +36,12 @@ function isRoundAmount(x: number): boolean {
     return x % 1000 === 0;
 }
 
-export class InMemoryBackend {
+export class InMemoryBackend implements ExecutionBackend {
     name = 'in-memory';
+
+    supportsRule(_rule: Rule): boolean {
+        return true;
+    }
 
     execute(
         rule: Rule,
@@ -522,28 +512,29 @@ export class InMemoryBackend {
         records: NormalizedRecord[],
         extras: Record<string, any> = {}
     ): ViolationResult {
-        const total = records.reduce((sum, r) => sum + r.amount, 0);
+        const sorted = [...records].sort((a, b) => a.step - b.step);
+        const total = sorted.reduce((sum, r) => sum + r.amount, 0);
 
         return {
             id: uuid(),
             rule_id: rule.rule_id,
             rule_name: rule.name,
             severity: rule.severity,
-            record_id: `${account}_${rule.rule_id}_${records[0]?.step ?? 0}`,
+            record_id: `${account}_${rule.rule_id}_${sorted[0]?.step ?? 0}`,
             account,
             amount: total,
-            transaction_type: records[0]?.type ?? '',
+            transaction_type: sorted[0]?.type ?? '',
             evidence: {
                 account,
-                transaction_count: records.length,
-                amounts: records.map((r) => r.amount),
-                records: records.slice(0, 10), // limit evidence size
+                transaction_count: sorted.length,
+                amounts: sorted.map((r) => r.amount),
+                records: sorted.slice(0, 10), // limit evidence size
             },
             threshold: extras.threshold ?? rule.threshold ?? 0,
             actual_value: extras.actual_value ?? total,
             policy_excerpt: rule.policy_excerpt,
             policy_section: rule.policy_section ?? '',
-            explanation: generateWindowedExplanation(rule, account, records, extras),
+            explanation: generateWindowedExplanation(rule, account, sorted, extras),
             status: 'pending',
         };
     }
