@@ -1,6 +1,6 @@
 // ============================================================
 // Audit Store — Yggdrasil
-// Tracks the active wizard flow (screens 2-6)
+// Tracks the active audit workflow (wizard screens + server persistence)
 // ============================================================
 
 import { create } from 'zustand';
@@ -39,10 +39,12 @@ interface AuditState {
     isCreating: boolean;
     isUploading: boolean;
     isMapping: boolean;
+    isLoading: boolean;
     error: string | null;
 
     // Actions
     createAudit: (req: CreateAuditRequest) => Promise<void>;
+    loadAudit: (auditId: string) => Promise<void>;
     uploadCSV: (file: File) => Promise<void>;
     confirmMapping: (req: Omit<ConfirmMappingRequest, 'upload_id'>) => Promise<void>;
     startScan: () => Promise<string>;
@@ -55,11 +57,11 @@ interface AuditState {
 }
 
 const initialState = {
-    auditId: null,
-    policyId: null,
-    uploadId: null,
-    mappingId: null,
-    scanId: null,
+    auditId: null as string | null,
+    policyId: null as string | null,
+    uploadId: null as string | null,
+    mappingId: null as string | null,
+    scanId: null as string | null,
     auditName: '',
     policyType: null as 'aml' | 'gdpr' | 'soc2' | null,
     rules: [] as Rule[],
@@ -68,8 +70,27 @@ const initialState = {
     isCreating: false,
     isUploading: false,
     isMapping: false,
+    isLoading: false,
     error: null as string | null,
 };
+
+function stepFromAuditStatus(status: string, hasUpload: boolean, hasMapping: boolean): AuditStep {
+    switch (status) {
+        case 'completed':
+            return 'dashboard';
+        case 'scan_running':
+            return 'scanning';
+        case 'ready_to_scan':
+            return 'mapping';
+        case 'failed':
+            return 'mapping';
+        case 'draft':
+        default:
+            if (hasMapping) return 'mapping';
+            if (hasUpload) return 'rules';
+            return 'upload';
+    }
+}
 
 export const useAuditStore = create<AuditState>((set, get) => ({
     ...initialState,
@@ -95,12 +116,67 @@ export const useAuditStore = create<AuditState>((set, get) => ({
         }
     },
 
+    loadAudit: async (auditId: string) => {
+        set({ isLoading: true, error: null });
+        try {
+            const data = await api.get<{
+                id: string;
+                name: string;
+                status: string;
+                policy: { id: string; name: string; type: string; rules_count: number } | null;
+                upload: { id: string; file_name: string; row_count: number } | null;
+                mapping: { id: string; ready: boolean } | null;
+                latest_scan: { id: string; status: string; score: number } | null;
+                can_rescan: boolean;
+            }>(`/audits/${auditId}`);
+
+            let rules: Rule[] = [];
+            if (data.policy) {
+                try {
+                    const policyData = await api.get<{ rules: Rule[] }>(`/policies/${data.policy.id}`);
+                    rules = policyData.rules ?? [];
+                } catch { /* policy rules may not be accessible */ }
+            }
+
+            const step = stepFromAuditStatus(
+                data.status,
+                !!data.upload,
+                !!data.mapping,
+            );
+
+            set({
+                auditId: data.id,
+                auditName: data.name,
+                policyId: data.policy?.id ?? null,
+                uploadId: data.upload?.id ?? null,
+                mappingId: data.mapping?.id ?? null,
+                scanId: data.latest_scan?.id ?? null,
+                rules,
+                step,
+                isLoading: false,
+            });
+        } catch (err) {
+            set({
+                error: err instanceof Error ? err.message : 'Failed to load audit',
+                isLoading: false,
+            });
+        }
+    },
+
     uploadCSV: async (file) => {
         set({ isUploading: true, error: null });
         try {
             const formData = new FormData();
             formData.append('file', file);
             const data = await api.upload<UploadDataResponse>('/data/upload', formData);
+
+            const { auditId } = get();
+            if (auditId) {
+                try {
+                    await api.patch(`/audits/${auditId}`, { upload_id: data.upload_id });
+                } catch { /* audit table may not exist yet */ }
+            }
+
             set({
                 uploadId: data.upload_id,
                 uploadData: data,
@@ -125,6 +201,17 @@ export const useAuditStore = create<AuditState>((set, get) => ({
                 ...req,
                 upload_id: uploadId,
             });
+
+            const { auditId } = get();
+            if (auditId) {
+                try {
+                    await api.patch(`/audits/${auditId}`, {
+                        mapping_id: data.mapping_id,
+                        status: 'ready_to_scan',
+                    });
+                } catch { /* audit table may not exist yet */ }
+            }
+
             set({
                 mappingId: data.mapping_id,
                 isMapping: false,
@@ -143,16 +230,43 @@ export const useAuditStore = create<AuditState>((set, get) => ({
             throw new Error('Missing required IDs to start scan');
         }
 
-        const data = await api.post<StartScanResponse>('/scan/run', {
-            audit_id: auditId,
-            policy_id: policyId,
-            upload_id: uploadId,
-            mapping_id: mappingId,
-            audit_name: auditName || undefined,
-        } as StartScanRequest);
+        if (auditId) {
+            try {
+                await api.patch(`/audits/${auditId}`, { status: 'scan_running' });
+            } catch { /* audit table may not exist yet */ }
+        }
 
-        set({ scanId: data.scan_id, step: 'scanning' });
-        return data.scan_id;
+        try {
+            const data = await api.post<StartScanResponse>('/scan/run', {
+                audit_id: auditId,
+                policy_id: policyId,
+                upload_id: uploadId,
+                mapping_id: mappingId,
+                audit_name: auditName || undefined,
+            } as StartScanRequest);
+
+            if (auditId) {
+                try {
+                    await api.patch(`/audits/${auditId}`, {
+                        status: 'completed',
+                        latest_scan_id: data.scan_id,
+                    });
+                } catch { /* audit table may not exist yet */ }
+            }
+
+            set({ scanId: data.scan_id, step: 'scanning' });
+            return data.scan_id;
+        } catch (err) {
+            if (auditId) {
+                try {
+                    await api.patch(`/audits/${auditId}`, {
+                        status: 'failed',
+                        error_message: err instanceof Error ? err.message : 'Scan failed',
+                    });
+                } catch { /* audit table may not exist yet */ }
+            }
+            throw err;
+        }
     },
 
     setStep: (step) => set({ step }),
