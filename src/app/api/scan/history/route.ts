@@ -1,20 +1,28 @@
 // ============================================================
-// GET /api/scan/history — Scan history for user
+// GET /api/scan/history — Scan history for the current org
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseForRequest, getUserIdFromRequest, AuthError } from '@/lib/supabase';
+import { AuthError } from '@/lib/supabase';
+import { resolveOrgContext, orgFilter } from '@/lib/org-context';
 
 export async function GET(request: NextRequest) {
     try {
-        const supabase = await getSupabaseForRequest(request);
-        const userId = await getUserIdFromRequest(request);
+        const ctx = await resolveOrgContext(request);
+        const org = orgFilter(ctx);
 
-        const { data: scans, error } = await supabase
+        let query = ctx.supabase
             .from('scans')
             .select('*')
-            .eq('user_id', userId)
             .order('created_at', { ascending: false });
+
+        if (org) {
+            query = query.eq('organization_id', org);
+        } else {
+            query = query.eq('user_id', ctx.userId);
+        }
+
+        const { data: scans, error } = await query;
 
         if (error) {
             return NextResponse.json(
