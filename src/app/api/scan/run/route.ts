@@ -20,6 +20,7 @@ import {
 import { filterExecutableRules } from '@/lib/engine/rule-validation';
 import { Rule } from '@/lib/types';
 import { logStructured } from '@/lib/structured-log';
+import { generateCases, isAmlPolicyType, type ViolationForCase } from '@/lib/case-generation';
 
 export async function POST(request: NextRequest) {
     try {
@@ -264,10 +265,94 @@ export async function POST(request: NextRequest) {
             console.error('Scan update error:', scanUpdateErr);
         }
 
-        // The scan currently runs synchronously, so report the actual final status.
+        // 9. Auto-create cases for AML scans (P3-04/P3-06)
+        let casesCreated = 0;
+        let subjectsFlagged = 0;
+
+        const policyType = await getPolicyType(supabase, policy_id);
+        if (isAmlPolicyType(policyType) && violations.length > 0) {
+            try {
+                const violationsForCases: ViolationForCase[] = violations.map((v) => ({
+                    id: v.id,
+                    rule_id: v.rule_id,
+                    rule_name: v.rule_name,
+                    severity: v.severity,
+                    account: v.account ?? '',
+                    amount: v.amount ?? 0,
+                    transaction_type: v.transaction_type,
+                    record_id: v.record_id,
+                    recipient: v.evidence?.recipient as string | undefined,
+                }));
+
+                // Check for repeat subjects in this org
+                let existingSubjects: Set<string> | undefined;
+                if (org) {
+                    const { data: priorCases } = await supabase
+                        .from('cases')
+                        .select('subject_key')
+                        .eq('organization_id', org)
+                        .neq('scan_id', scanId);
+                    if (priorCases) {
+                        existingSubjects = new Set(priorCases.map((c: any) => c.subject_key));
+                    }
+                }
+
+                const generatedCases = generateCases(violationsForCases, existingSubjects);
+                const persistedSubjects = new Set<string>();
+
+                for (const gc of generatedCases) {
+                    const caseRow: Record<string, unknown> = {
+                        id: gc.id,
+                        scan_id: scanId,
+                        policy_id,
+                        subject_key: gc.subject_key,
+                        subject_type: gc.subject_type,
+                        severity_rollup: gc.severity_rollup,
+                        violation_count: gc.violation_count,
+                        open_violations: gc.open_violations,
+                        suspicious_amount: gc.suspicious_amount,
+                        counterparty_count: gc.counterparty_count,
+                        priority_score: gc.priority_score,
+                        status: 'open',
+                    };
+                    if (org) caseRow.organization_id = org;
+                    if (audit_id) caseRow.audit_id = audit_id;
+
+                    const { error: caseErr } = await supabase.from('cases').insert(caseRow);
+                    if (caseErr) {
+                        if (caseErr.code === '42P01' || caseErr.message?.includes('does not exist')) {
+                            break;
+                        }
+                        console.error('Case insert error:', caseErr);
+                        continue;
+                    }
+
+                    casesCreated++;
+                    persistedSubjects.add(gc.subject_key);
+
+                    await supabase.from('violations').update({ case_id: gc.id }).in('id', gc.violation_ids);
+                    await supabase.from('case_events').insert({
+                        case_id: gc.id,
+                        event_type: 'created',
+                        actor_id: userId,
+                        payload: {
+                            subject_key: gc.subject_key,
+                            violation_count: gc.violation_count,
+                            severity_rollup: gc.severity_rollup,
+                        },
+                    });
+                }
+
+                subjectsFlagged = persistedSubjects.size;
+            } catch (caseGenErr) {
+                console.error('Case generation error (non-fatal):', caseGenErr);
+            }
+        }
+
         return NextResponse.json({
             scan_id: scanId,
             status: 'completed',
+            ...(casesCreated > 0 ? { cases_created: casesCreated, subjects_flagged: subjectsFlagged } : {}),
         });
 
     } catch (err) {
@@ -282,5 +367,18 @@ export async function POST(request: NextRequest) {
             { error: 'INTERNAL_ERROR', message: 'An unexpected error occurred', status: 'failed' },
             { status: 500 }
         );
+    }
+}
+
+async function getPolicyType(supabase: any, policyId: string): Promise<string | null> {
+    try {
+        const { data } = await supabase
+            .from('policies')
+            .select('prebuilt_type')
+            .eq('id', policyId)
+            .single();
+        return data?.prebuilt_type ?? null;
+    } catch {
+        return null;
     }
 }
