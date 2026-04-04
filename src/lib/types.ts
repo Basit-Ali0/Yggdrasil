@@ -67,6 +67,8 @@ export interface Violation {
     reviewed_by?: string | null;
     created_at?: string;
     record_id?: string;
+    /** Linked AML case ID (P3-12). Null for non-AML violations. */
+    case_id?: string | null;
 }
 
 // ── Remediation (Generate Fix) ───────────────────────────────
