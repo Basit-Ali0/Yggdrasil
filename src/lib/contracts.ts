@@ -151,6 +151,10 @@ export interface StartScanRequest {
 export interface StartScanResponse {
     scan_id: string;
     status: 'running' | 'completed';
+    /** AML only: number of investigation cases auto-created */
+    cases_created?: number;
+    /** AML only: number of unique subjects flagged */
+    subjects_flagged?: number;
 }
 
 // ── Screen 6 polling: GET /api/scan/:id ──────────────────────
@@ -339,4 +343,102 @@ export interface ConnectorImportResponse {
     file_name: string;
     source: string;
     connector_id: string;
+}
+
+// ── Case types (P3) ─────────────────────────────────────────
+export type CaseStatus = 'open' | 'in_review' | 'escalated' | 'closed_no_action' | 'sar_prepared';
+export type CaseDisposition = 'false_positive' | 'monitor' | 'investigate_further' | 'prepare_sar' | 'closed';
+
+export interface Case {
+    id: string;
+    organization_id: string | null;
+    audit_id: string | null;
+    scan_id: string;
+    policy_id: string | null;
+    subject_key: string;
+    subject_type: string;
+    status: CaseStatus;
+    disposition: CaseDisposition | null;
+    owner_id: string | null;
+    narrative: string | null;
+    priority_score: number;
+    severity_rollup: string;
+    violation_count: number;
+    open_violations: number;
+    suspicious_amount: number;
+    counterparty_count: number;
+    latest_activity: string;
+    assigned_at: string | null;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface CaseEvent {
+    id: string;
+    case_id: string;
+    event_type: string;
+    actor_id: string | null;
+    payload: Record<string, unknown>;
+    created_at: string;
+}
+
+export interface CaseListResponse {
+    cases: Case[];
+    total: number;
+    limit: number;
+    offset: number;
+}
+
+export interface CaseDetailResponse extends Case {
+    violations: Violation[];
+    timeline: CaseEvent[];
+    prior_cases: Array<{
+        id: string;
+        scan_id: string;
+        status: string;
+        severity_rollup: string;
+        violation_count: number;
+        suspicious_amount: number;
+        created_at: string;
+    }>;
+    grouped_evidence: Array<{
+        rule_id: string;
+        rule_name: string;
+        count: number;
+        total_amount: number;
+    }>;
+    review_summary: {
+        total: number;
+        pending: number;
+        approved: number;
+        false_positive: number;
+    };
+    sar_ready: boolean;
+}
+
+export interface CaseExportResponse {
+    case_packet: {
+        generated_at: string;
+        organization: { id: string; name: string } | null;
+        case: Omit<Case, 'organization_id'>;
+        sar_prep: {
+            narrative: string | null;
+            date_range_start: string | null;
+            date_range_end: string | null;
+            flagged_amount: number;
+            involved_accounts: string[];
+            counterparties: string[];
+            analyst_summary: string | null;
+            supporting_triggers: Array<{ rule_id: string; rule_name: string; count: number }>;
+        };
+        violations: Violation[];
+        notes: Array<{ content: string; actor_id: string; created_at: string }>;
+        timeline: CaseEvent[];
+        summary: {
+            total_violations: number;
+            suspicious_amount: number;
+            by_severity: Record<string, number>;
+            by_rule: Array<{ rule_id: string; rule_name: string; count: number; total_amount: number }>;
+        };
+    };
 }
