@@ -8,11 +8,12 @@
     "start": "next start",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
-    "test": "tsx src/lib/engine/__tests__/engine.test.ts && tsx src/lib/engine/__tests__/execution-parity.test.ts && tsx src/lib/engine/__tests__/rule-validation.test.ts && tsx src/lib/engine/__tests__/mapping-readiness.test.ts",
+    "test": "tsx src/lib/engine/__tests__/engine.test.ts && tsx src/lib/engine/__tests__/execution-parity.test.ts && tsx src/lib/engine/__tests__/rule-validation.test.ts && tsx src/lib/engine/__tests__/mapping-readiness.test.ts && tsx src/lib/engine/__tests__/case-generation.test.ts",
     "test:engine": "tsx src/lib/engine/__tests__/engine.test.ts",
     "test:parity": "tsx src/lib/engine/__tests__/execution-parity.test.ts",
     "test:rule-validation": "tsx src/lib/engine/__tests__/rule-validation.test.ts",
     "test:mapping-readiness": "tsx src/lib/engine/__tests__/mapping-readiness.test.ts",
+    "test:case-generation": "tsx src/lib/engine/__tests__/case-generation.test.ts",
     "test:e2e": "playwright test"
   },
   "dependencies": {
