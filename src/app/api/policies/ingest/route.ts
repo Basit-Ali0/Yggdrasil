@@ -3,7 +3,8 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseForRequest, getUserIdFromRequest, AuthError } from '@/lib/supabase';
+import { AuthError } from '@/lib/supabase';
+import { resolveOrgContext, orgFilter } from '@/lib/org-context';
 import { geminiGenerateObject } from '@/lib/gemini';
 import {
     buildRuleRowsFromExtraction,
@@ -85,21 +86,22 @@ Strict Requirements:
             prompt: `Extract compliance rules from the following policy document:\n\n${pdfText.slice(0, 500000)}`,
         });
 
-        const userId = await getUserIdFromRequest(request);
-        const supabase = await getSupabaseForRequest(request);
+        const ctx = await resolveOrgContext(request);
+        const { supabase, userId } = ctx;
+        const org = orgFilter(ctx);
 
         // Create policy
         const policyId = uuid();
-        const { error: policyError } = await supabase
-            .from('policies')
-            .insert({
-                id: policyId,
-                user_id: userId,
-                name: result.policy_name || file.name.replace('.pdf', ''),
-                type: 'pdf',
-                rules_count: result.rules.length,
-                status: 'active',
-            });
+        const policyRow: Record<string, unknown> = {
+            id: policyId,
+            user_id: userId,
+            name: result.policy_name || file.name.replace('.pdf', ''),
+            type: 'pdf',
+            rules_count: result.rules.length,
+            status: 'active',
+        };
+        if (org) policyRow.organization_id = org;
+        const { error: policyError } = await supabase.from('policies').insert(policyRow);
 
         if (policyError) {
             return NextResponse.json(
