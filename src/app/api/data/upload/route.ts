@@ -11,6 +11,7 @@ import { geminiGenerateObject } from '@/lib/gemini';
 import { z } from 'zod';
 
 import { saveUpload } from '@/lib/upload-store';
+import { resolveOrgContext, orgFilter } from '@/lib/org-context';
 
 export async function POST(request: NextRequest) {
     try {
@@ -95,7 +96,12 @@ export async function POST(request: NextRequest) {
 
         // Store upload (durable-first + in-memory fallback)
         const uploadId = uuid();
-        await saveUpload(request, uploadId, { rows, headers, fileName: file.name });
+        let uploadOrgId: string | undefined;
+        try {
+            const ctx = await resolveOrgContext(request);
+            uploadOrgId = orgFilter(ctx) ?? undefined;
+        } catch { /* unauthenticated uploads still work */ }
+        await saveUpload(request, uploadId, { rows, headers, fileName: file.name }, uploadOrgId);
 
         // Response per CONTRACTS.md
         return NextResponse.json({

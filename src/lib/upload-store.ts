@@ -55,6 +55,7 @@ export async function saveUpload(
     request: NextRequest,
     uploadId: string,
     data: UploadData,
+    organizationId?: string,
 ): Promise<void> {
     uploadStore.set(uploadId, data);
 
@@ -65,6 +66,7 @@ export async function saveUpload(
         {
             id: uploadId,
             user_id: ctx.userId,
+            ...(organizationId ? { organization_id: organizationId } : {}),
             file_name: data.fileName,
             headers: data.headers,
             rows: data.rows,

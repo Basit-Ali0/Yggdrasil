@@ -56,6 +56,7 @@ export async function saveMapping(
     request: NextRequest,
     mappingId: string,
     data: MappingData,
+    organizationId?: string,
 ): Promise<void> {
     mappingStore.set(mappingId, data);
 
@@ -66,6 +67,7 @@ export async function saveMapping(
         {
             id: mappingId,
             user_id: ctx.userId,
+            ...(organizationId ? { organization_id: organizationId } : {}),
             upload_id: data.upload_id,
             mapping_config: data.mapping_config,
             temporal_scale: data.temporal_scale,

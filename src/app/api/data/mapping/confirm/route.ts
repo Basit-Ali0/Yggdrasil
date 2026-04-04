@@ -8,6 +8,7 @@ import { ConfirmMappingSchema } from '@/lib/validators';
 import { v4 as uuid } from 'uuid';
 
 import { saveMapping } from '@/lib/mapping-store';
+import { resolveOrgContext, orgFilter } from '@/lib/org-context';
 
 export async function POST(request: NextRequest) {
     try {
@@ -23,13 +24,19 @@ export async function POST(request: NextRequest) {
 
         const { upload_id, mapping_config, temporal_scale } = parsed.data;
 
+        let mappingOrgId: string | undefined;
+        try {
+            const ctx = await resolveOrgContext(request);
+            mappingOrgId = orgFilter(ctx) ?? undefined;
+        } catch { /* unauthenticated confirm still works */ }
+
         const mappingId = uuid();
         await saveMapping(request, mappingId, {
             upload_id,
             mapping_config,
             temporal_scale,
             clarification_answers: parsed.data.clarification_answers ?? [],
-        });
+        }, mappingOrgId);
 
         return NextResponse.json({
             mapping_id: mappingId,
