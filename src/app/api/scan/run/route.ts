@@ -5,7 +5,8 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseForRequest, getUserIdFromRequest, AuthError } from '@/lib/supabase';
+import { AuthError } from '@/lib/supabase';
+import { resolveOrgContext, orgFilter } from '@/lib/org-context';
 import { RunScanSchema } from '@/lib/validators';
 import { RuleExecutor } from '@/lib/engine/rule-executor';
 import { calculateComplianceScore } from '@/lib/engine/scoring';
@@ -33,8 +34,9 @@ export async function POST(request: NextRequest) {
         }
 
         const { audit_id, policy_id, upload_id, mapping_id, audit_name } = parsed.data;
-        const userId = await getUserIdFromRequest(request);
-        const supabase = await getSupabaseForRequest(request);
+        const ctx = await resolveOrgContext(request);
+        const { supabase, userId } = ctx;
+        const org = orgFilter(ctx);
 
         // 1. Get mapping config
         const mapping = await getMapping(request, mapping_id);
@@ -154,6 +156,8 @@ export async function POST(request: NextRequest) {
             upload_id,
             mapping_id,
         };
+        if (org) scanRecord.organization_id = org;
+        if (audit_id) scanRecord.audit_id = audit_id;
 
         // Try with audit name first; fall back without it if column doesn't exist yet
         if (audit_name) {
@@ -208,24 +212,28 @@ export async function POST(request: NextRequest) {
 
         // 7. Insert violations into Supabase (batch)
         if (violations.length > 0) {
-            const violationRows = violations.map((v) => ({
-                id: v.id,
-                scan_id: scanId,
-                rule_id: v.rule_id,
-                rule_name: v.rule_name,
-                severity: v.severity,
-                record_id: v.record_id,
-                account: v.account,
-                amount: v.amount,
-                transaction_type: v.transaction_type,
-                evidence: v.evidence,
-                threshold: v.threshold,
-                actual_value: v.actual_value,
-                policy_excerpt: v.policy_excerpt,
-                policy_section: v.policy_section,
-                explanation: v.explanation,
-                status: 'pending',
-            }));
+            const violationRows = violations.map((v) => {
+                const row: Record<string, unknown> = {
+                    id: v.id,
+                    scan_id: scanId,
+                    rule_id: v.rule_id,
+                    rule_name: v.rule_name,
+                    severity: v.severity,
+                    record_id: v.record_id,
+                    account: v.account,
+                    amount: v.amount,
+                    transaction_type: v.transaction_type,
+                    evidence: v.evidence,
+                    threshold: v.threshold,
+                    actual_value: v.actual_value,
+                    policy_excerpt: v.policy_excerpt,
+                    policy_section: v.policy_section,
+                    explanation: v.explanation,
+                    status: 'pending',
+                };
+                if (org) row.organization_id = org;
+                return row;
+            });
 
             // Insert in batches of 500 to avoid payload limits
             const BATCH_SIZE = 500;
