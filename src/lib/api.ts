@@ -5,6 +5,7 @@
 // ============================================================
 
 import { getSupabaseBrowser } from '@/lib/supabase-browser';
+import { useOrgStore } from '@/stores/org-store';
 
 interface ApiError {
     error: string;
@@ -53,12 +54,19 @@ async function fetchWithRetry(
     throw new Error('Exhausted retries');
 }
 
+function getOrgId(): string | null {
+    try {
+        return useOrgStore.getState().currentOrg?.id ?? null;
+    } catch {
+        return null;
+    }
+}
+
 async function getHeaders(): Promise<HeadersInit> {
     const headers: Record<string, string> = {
         'Content-Type': 'application/json',
     };
 
-    // Attach Supabase auth token if available
     try {
         const supabase = getSupabaseBrowser();
         const { data: { session } } = await supabase.auth.getSession();
@@ -66,7 +74,12 @@ async function getHeaders(): Promise<HeadersInit> {
             headers['Authorization'] = `Bearer ${session.access_token}`;
         }
     } catch {
-        // No auth available — request will fail with 401
+        // No auth available
+    }
+
+    const orgId = getOrgId();
+    if (orgId) {
+        headers['X-Organization-Id'] = orgId;
     }
 
     return headers;
@@ -156,8 +169,6 @@ export const api = {
     },
 
     async upload<T>(path: string, formData: FormData): Promise<T> {
-        // Don't set Content-Type — browser handles multipart boundary
-        // But DO send the auth token
         const authHeaders: Record<string, string> = {};
         try {
             const supabase = getSupabaseBrowser();
@@ -166,6 +177,11 @@ export const api = {
                 authHeaders['Authorization'] = `Bearer ${session.access_token}`;
             }
         } catch { /* no auth */ }
+
+        const orgId = getOrgId();
+        if (orgId) {
+            authHeaders['X-Organization-Id'] = orgId;
+        }
 
         const response = await fetchWithRetry(`/api${path}`, {
             method: 'POST',
