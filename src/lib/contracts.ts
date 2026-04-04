@@ -6,6 +6,9 @@
 import type { Rule, Violation, ClarificationQuestion } from './types';
 import type { RawExtractedRule } from './validators/extracted-policy-rules';
 
+// ── Audit lifecycle types ────────────────────────────────────
+export type AuditStatus = 'draft' | 'ready_to_scan' | 'scan_running' | 'completed' | 'failed';
+
 // ── Screen 2 → 3: POST /api/audits ──────────────────────────
 export interface CreateAuditRequest {
     name: string;
@@ -17,6 +20,38 @@ export interface CreateAuditResponse {
     audit_id: string;
     policy_id: string;
     rules: Rule[];
+}
+
+/** GET /api/audits/:id */
+export interface AuditDetailResponse {
+    id: string;
+    name: string;
+    status: AuditStatus;
+    organization_id: string | null;
+    data_source: string;
+    connector_id: string | null;
+    error_message: string | null;
+    created_at: string;
+    updated_at: string;
+    policy: { id: string; name: string; type: string; prebuilt_type?: string; rules_count: number } | null;
+    upload: { id: string; file_name: string; row_count: number; created_at: string } | null;
+    mapping: { id: string; ready: boolean } | null;
+    latest_scan: { id: string; status: string; score: number; violation_count: number; created_at: string; completed_at: string | null } | null;
+    can_rescan: boolean;
+}
+
+/** GET /api/audits */
+export interface AuditListResponse {
+    audits: Array<{
+        id: string;
+        name: string;
+        status: AuditStatus;
+        policy_id: string | null;
+        data_source: string;
+        created_at: string;
+        updated_at: string;
+        latest_scan_id: string | null;
+    }>;
 }
 
 // ── Screen 3 → 4: POST /api/data/upload ─────────────────────
@@ -227,14 +262,81 @@ export interface ScanHistoryResponse {
 export interface ExportResponse {
     report: {
         generated_at: string;
-        policy: { id: string; name: string };
-        scan: { id: string; score: number; violation_count: number; scan_date: string };
+        organization: { id: string; name: string } | null;
+        audit: { id: string; name: string } | null;
+        policy: { id: string; name: string; type: string; rules_count: number };
+        scan: {
+            id: string;
+            status: string;
+            compliance_score: number;
+            record_count: number;
+            violation_count: number;
+            created_at: string;
+            completed_at: string | null;
+        };
         violations: Violation[];
+        reviews: {
+            total: number;
+            approved: number;
+            false_positive: number;
+            disputed: number;
+            pending: number;
+            notes: Array<{
+                violation_id: string;
+                status: string;
+                note: string;
+                reviewed_by: string;
+                reviewed_at: string;
+            }>;
+        };
         summary: {
             total_violations: number;
-            high_severity: number;
-            medium_severity: number;
-            low_severity: number;
+            by_severity: Record<string, number>;
+            by_rule: Array<{ rule_id: string; rule_name: string; count: number }>;
         };
     };
+}
+
+// ── Connector types ─────────────────────────────────────────
+export type ConnectorType = 'postgres' | 's3_csv';
+
+export interface Connector {
+    id: string;
+    name: string;
+    type: ConnectorType;
+    config: Record<string, unknown>;
+    status: 'active' | 'disabled' | 'error';
+    last_tested_at: string | null;
+    created_at: string;
+}
+
+export interface ConnectorListResponse {
+    connectors: Connector[];
+}
+
+export interface ConnectorTestResponse {
+    ok: boolean;
+    error?: string;
+    message?: string;
+}
+
+export interface ConnectorDiscoverResponse {
+    schemas?: Array<{ name: string; tables: string[] }>;
+    files?: Array<{ key: string; size: number; last_modified: string | null }>;
+}
+
+export interface ConnectorPreviewResponse {
+    headers: string[];
+    rows: Record<string, unknown>[];
+    total_rows?: number;
+    preview_rows: number;
+}
+
+export interface ConnectorImportResponse {
+    upload_id: string;
+    row_count: number;
+    headers: string[];
+    file_name: string;
+    source: string;
+    connector_id: string;
 }
