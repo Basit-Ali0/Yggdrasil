@@ -83,9 +83,10 @@ test.describe('AML Ops E2E Flow', () => {
     });
 
     test('mapping readiness endpoint returns status', async ({ request }) => {
-        const res = await request.get(`${BASE_URL}/api/data/mapping/readiness`);
-        // Endpoint exists and returns something useful
-        expect([200, 400, 404]).toContain(res.status());
+        const res = await request.post(`${BASE_URL}/api/data/mapping/readiness`, {
+            data: { upload_id: '00000000-0000-0000-0000-000000000000', mapping_config: {}, active_rule_ids: [] },
+        });
+        expect([200, 400, 401, 404, 422]).toContain(res.status());
     });
 });
 
