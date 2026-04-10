@@ -43,7 +43,8 @@ function assertFiniteScale(scale: number): number {
 
 function dormancyStepGapThreshold(scale: number): number {
     const s = assertFiniteScale(scale);
-    return 90 * (s === 24 ? 1 : s);
+    if (s <= 0) return 90;
+    return Math.round(90 * (24 / s));
 }
 
 const FIELD_TO_COL: Record<string, string> = {

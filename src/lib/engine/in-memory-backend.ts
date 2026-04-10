@@ -490,9 +490,10 @@ export class InMemoryBackend implements ExecutionBackend {
         // Sort by step
         const sorted = [...records].sort((a, b) => a.step - b.step);
 
-        // Find gaps: look for 90-step dormancy (scaled)
-        const dormancyThreshold = 90 * (scale === 24 ? 1 : scale); // 90 days in steps
-        const reactivationWindow = 30 * (scale === 24 ? 1 : scale);
+        // Find gaps: 90 days expressed in steps (steps_per_day = 24 / scale)
+        const stepsPerDay = scale > 0 ? 24 / scale : 1;
+        const dormancyThreshold = Math.round(90 * stepsPerDay);
+        const reactivationWindow = Math.round(30 * stepsPerDay);
 
         for (let i = 1; i < sorted.length; i++) {
             const gap = sorted[i].step - sorted[i - 1].step;
