@@ -65,7 +65,13 @@ export async function POST(request: NextRequest) {
             created_by: ctx.userId,
         };
 
-        if (credentials && isEncryptionAvailable()) {
+        if (credentials) {
+            if (!isEncryptionAvailable()) {
+                return NextResponse.json({
+                    error: 'PRECONDITION',
+                    message: 'Credential encryption is not configured (YGG_CONNECTOR_SECRET missing). Cannot store credentials.',
+                }, { status: 503 });
+            }
             row.credentials_enc = encryptCredentials(JSON.stringify(credentials));
         }
 
