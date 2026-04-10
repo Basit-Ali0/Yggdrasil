@@ -5,7 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { AuthError } from '@/lib/supabase';
-import { resolveOrgContext } from '@/lib/org-context';
+import { resolveOrgContext, orgFilter } from '@/lib/org-context';
 
 export async function GET(
     request: NextRequest,
@@ -15,12 +15,15 @@ export async function GET(
         const { id } = await params;
         const ctx = await resolveOrgContext(request);
         const { supabase } = ctx;
+        const org = orgFilter(ctx);
 
-        const { data: caseData, error } = await supabase
+        let query = supabase
             .from('cases')
             .select('*')
-            .eq('id', id)
-            .single();
+            .eq('id', id);
+        if (org) query = query.eq('organization_id', org);
+
+        const { data: caseData, error } = await query.single();
 
         if (error || !caseData) {
             return NextResponse.json({ error: 'NOT_FOUND', message: 'Case not found' }, { status: 404 });
@@ -96,6 +99,7 @@ export async function PATCH(
         const { id } = await params;
         const ctx = await resolveOrgContext(request);
         const { supabase, userId } = ctx;
+        const org = orgFilter(ctx);
         const body = await request.json();
 
         const allowedFields = [
@@ -115,7 +119,9 @@ export async function PATCH(
 
         // SAR readiness gate (P3-20)
         if (body.status === 'sar_prepared') {
-            const { data: existing } = await supabase.from('cases').select('owner_id, disposition, narrative').eq('id', id).single();
+            let sarQuery = supabase.from('cases').select('owner_id, disposition, narrative').eq('id', id);
+            if (org) sarQuery = sarQuery.eq('organization_id', org);
+            const { data: existing } = await sarQuery.single();
             const owner = body.owner_id ?? existing?.owner_id;
             const disposition = body.disposition ?? existing?.disposition;
             const narrative = body.narrative ?? existing?.narrative;
@@ -136,10 +142,13 @@ export async function PATCH(
             }
         }
 
-        const { data: updated, error } = await supabase
+        let updateQuery = supabase
             .from('cases')
             .update(updates)
-            .eq('id', id)
+            .eq('id', id);
+        if (org) updateQuery = updateQuery.eq('organization_id', org);
+
+        const { data: updated, error } = await updateQuery
             .select('*')
             .single();
 
