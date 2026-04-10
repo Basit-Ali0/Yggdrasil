@@ -53,7 +53,10 @@ export function normalizedSelectExpressions(
  */
 function jsonPathForMappedField(mapping: Record<string, string>, field: string): string {
     const csvField = mapping[field] || field;
-    const escaped = String(csvField).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    const escaped = String(csvField)
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "''")
+        .replace(/"/g, '\\"');
     return `'$."${escaped}"'`;
 }
 
