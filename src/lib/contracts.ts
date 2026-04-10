@@ -12,7 +12,7 @@ export type AuditStatus = 'draft' | 'ready_to_scan' | 'scan_running' | 'complete
 // ── Screen 2 → 3: POST /api/audits ──────────────────────────
 export interface CreateAuditRequest {
     name: string;
-    policy_type: 'aml' | 'gdpr' | 'soc2';
+    policy_type: 'aml' | 'gdpr' | 'soc2' | 'pdf';
     selected_categories?: string[];
 }
 
@@ -158,6 +158,14 @@ export interface StartScanResponse {
 }
 
 // ── Screen 6 polling: GET /api/scan/:id ──────────────────────
+export interface ScanDelta {
+    new_count: number;
+    resolved_count: number;
+    unchanged_count: number;
+    previous_scan_id: string;
+    previous_violation_count: number;
+}
+
 export interface ScanStatusResponse {
     id: string;
     status: 'pending' | 'running' | 'completed' | 'failed';
@@ -168,6 +176,13 @@ export interface ScanStatusResponse {
     created_at: string;
     completed_at: string | null;
     audit_name?: string;
+    score_history?: Array<{
+        score: number;
+        timestamp: string;
+        action: string;
+        violation_id?: string | null;
+    }>;
+    record_count?: number;
     // Rescan fields
     policy_id?: string;
     upload_id?: string;
@@ -175,6 +190,8 @@ export interface ScanStatusResponse {
     audit_id?: string;
     mapping_config?: Record<string, string>;
     temporal_scale?: number;
+    // Delta fields
+    delta?: ScanDelta | null;
 }
 
 // ── Screen 7: GET /api/violations/cases ──────────────────────
@@ -190,6 +207,7 @@ export interface ViolationCase {
         severity: 'CRITICAL' | 'HIGH' | 'MEDIUM';
         amount: number;
         explanation: string;
+        status: 'pending' | 'approved' | 'false_positive' | 'disputed';
     }>;
 }
 
@@ -253,6 +271,7 @@ export interface ScanHistoryEntry {
     violation_count: number;
     new_violations: number;
     resolved_violations: number;
+    unchanged_count: number;
     status: string;
     created_at: string;
     audit_name?: string;

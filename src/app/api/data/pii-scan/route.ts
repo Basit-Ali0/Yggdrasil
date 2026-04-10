@@ -37,6 +37,7 @@ export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
         const { upload_id, scan_id } = body as { upload_id: string; scan_id?: string };
+        console.log(`[PII-SCAN] Starting scan for upload_id: ${upload_id}`);
 
         if (!upload_id) {
             return NextResponse.json(
@@ -48,6 +49,7 @@ export async function POST(request: NextRequest) {
         // 1. Get data from durable-first upload store
         const stored = await getUpload(request, upload_id);
         if (!stored) {
+            console.warn(`[PII-SCAN] Upload ${upload_id} not found`);
             return NextResponse.json(
                 { error: 'Not Found', message: 'Upload not found — may have expired' },
                 { status: 404 },
@@ -55,6 +57,7 @@ export async function POST(request: NextRequest) {
         }
 
         const { rows, headers } = stored;
+        console.log(`[PII-SCAN] Processing ${rows.length} rows with ${headers.length} columns`);
 
         // 2. Sample 20 random rows for Gemini analysis
         const sampleIdxs = sampleIndices(rows.length, 20);
@@ -71,6 +74,7 @@ ${sampleRows.map((row) => JSON.stringify(row)).join('\n')}
 For each column, evaluate whether it contains PII. Return your findings.`;
 
         // 4. Call Gemini
+        console.log(`[PII-SCAN] Sending ${sampleRows.length} sample rows to Gemini for analysis...`);
         let geminiResult;
         try {
             geminiResult = await geminiGenerateObject({
@@ -78,6 +82,7 @@ For each column, evaluate whether it contains PII. Return your findings.`;
                 prompt,
                 system: PII_SYSTEM_PROMPT,
             });
+            console.log(`[PII-SCAN] Gemini analysis complete. Found ${geminiResult.findings.length} columns to check.`);
         } catch (err) {
             console.error('[PII Scan] Gemini analysis failed:', err);
             // Graceful degradation: return empty findings, don't block
@@ -90,14 +95,17 @@ For each column, evaluate whether it contains PII. Return your findings.`;
 
         // 5. For each finding with contains_pii === true, run detection against ALL rows
         const piiFindings = geminiResult.findings.filter((f) => f.contains_pii);
+        console.log(`[PII-SCAN] Running regex detection for ${piiFindings.length} PII types across ${rows.length} rows...`);
         const executionResults = executePIIDetection(rows, piiFindings);
+        console.log(`[PII-SCAN] Detection finished. Found matches in ${executionResults.filter(r => r.match_count > 0).length} columns.`);
 
-        // 6. If scan_id provided, persist findings to Supabase
-        if (scan_id && executionResults.length > 0) {
+        // 6. Persist findings to Supabase (scan_id may be null if called before scan creation)
+        if (executionResults.length > 0) {
+            console.log(`[PII-SCAN] Persisting findings to Supabase for upload_id: ${upload_id}, scan_id: ${scan_id ?? 'null'}`);
             try {
                 const supabase = getSupabase();
                 const insertRows = executionResults.map((r) => ({
-                    scan_id,
+                    scan_id: scan_id || null,
                     upload_id,
                     column_name: r.column_name,
                     pii_type: r.pii_type,

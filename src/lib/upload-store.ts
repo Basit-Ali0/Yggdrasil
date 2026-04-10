@@ -5,10 +5,22 @@
 import type { NextRequest } from 'next/server';
 import { getSupabaseForRequest, getUserIdFromRequest } from '@/lib/supabase';
 
+export interface DatasetMetadata {
+    columnStats: Record<string, {
+        min?: number;
+        max?: number;
+        mean?: number;
+        cardinality: number;
+        type: 'numeric' | 'categorical' | 'text';
+    }>;
+    totalRows: number;
+}
+
 export type UploadData = {
     rows: Record<string, any>[];
     headers: string[];
     fileName: string;
+    metadata?: DatasetMetadata;
 };
 
 type SupabaseContext = {
@@ -28,6 +40,41 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 const UPLOADS_TABLE = 'uploaded_datasets';
+
+function computeDatasetMetadata(
+    rows: Record<string, any>[],
+    headers: string[]
+): DatasetMetadata {
+    const metadata: DatasetMetadata = {
+        totalRows: rows.length,
+        columnStats: {},
+    };
+
+    for (const header of headers) {
+        const values = rows
+            .map((row) => row[header])
+            .filter((value) => value !== null && value !== undefined && value !== '');
+        const numericValues = values
+            .map((value) => (typeof value === 'number' ? value : Number(value)))
+            .filter((value) => Number.isFinite(value));
+        const isNumeric = values.length > 0 && numericValues.length === values.length;
+        const uniqueValues = new Set(values.map((value) => String(value)));
+
+        metadata.columnStats[header] = {
+            type: isNumeric ? 'numeric' : 'categorical',
+            cardinality: uniqueValues.size,
+            ...(isNumeric && numericValues.length > 0
+                ? {
+                      min: Math.min(...numericValues),
+                      max: Math.max(...numericValues),
+                      mean: numericValues.reduce((sum, value) => sum + value, 0) / numericValues.length,
+                  }
+                : {}),
+        };
+    }
+
+    return metadata;
+}
 
 async function getSupabaseContext(
     request: NextRequest,
@@ -57,7 +104,12 @@ export async function saveUpload(
     data: UploadData,
     organizationId?: string,
 ): Promise<void> {
-    uploadStore.set(uploadId, data);
+    const uploadData: UploadData = {
+        ...data,
+        metadata: data.metadata ?? computeDatasetMetadata(data.rows, data.headers),
+    };
+
+    uploadStore.set(uploadId, uploadData);
 
     const ctx = await getSupabaseContext(request);
     if (!ctx) return;
@@ -67,10 +119,10 @@ export async function saveUpload(
             id: uploadId,
             user_id: ctx.userId,
             ...(organizationId ? { organization_id: organizationId } : {}),
-            file_name: data.fileName,
-            headers: data.headers,
-            rows: data.rows,
-            row_count: data.rows.length,
+            file_name: uploadData.fileName,
+            headers: uploadData.headers,
+            rows: uploadData.rows,
+            row_count: uploadData.rows.length,
         },
         { onConflict: 'id' },
     );
@@ -110,6 +162,10 @@ export async function getUpload(
                 : 'uploaded.csv',
         headers: Array.isArray(data?.headers) ? (data.headers as string[]) : [],
         rows: Array.isArray(data?.rows) ? (data.rows as Record<string, any>[]) : [],
+        metadata: computeDatasetMetadata(
+            Array.isArray(data?.rows) ? (data.rows as Record<string, any>[]) : [],
+            Array.isArray(data?.headers) ? (data.headers as string[]) : []
+        ),
     };
 
     uploadStore.set(uploadId, record);

@@ -7,7 +7,7 @@ import { z } from 'zod';
 // ── POST /api/audits ─────────────────────────────────────────
 export const CreateAuditSchema = z.object({
     name: z.string().min(1),
-    policy_type: z.enum(['aml', 'gdpr', 'soc2']),
+    policy_type: z.enum(['aml', 'gdpr', 'soc2', 'pdf']),
     selected_categories: z.array(z.string()).optional(),
 });
 

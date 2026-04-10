@@ -160,9 +160,27 @@ export async function PATCH(
 
         const { data: scan } = await supabase
             .from('scans')
-            .select('record_count')
+            .select('record_count, policy_id')
             .eq('id', updated.scan_id)
             .single();
+
+        // ── Bayesian Feedback Loop ─────────────────────────────
+        // Increment the parent rule's approved or false_positive count
+        if (scan?.policy_id && updated.rule_id) {
+            const columnToIncrement = dbStatus === 'approved'
+                ? 'approved_count'
+                : 'false_positive_count';
+
+            try {
+                await supabase.rpc('increment_rule_stat', {
+                    target_policy_id: scan.policy_id,
+                    target_rule_id: updated.rule_id,
+                    stat_column: columnToIncrement
+                });
+            } catch (rpcErr) {
+                console.warn('[violations/PATCH] increment_rule_stat RPC failed (migration may not be applied):', rpcErr);
+            }
+        }
 
         const newScore = calculateComplianceScore(
             scan?.record_count ?? 0,
@@ -174,6 +192,29 @@ export async function PATCH(
             .from('scans')
             .update({ compliance_score: newScore })
             .eq('id', updated.scan_id);
+
+        // Track score history for compliance trend chart
+        try {
+            const { data: scanData } = await supabase
+                .from('scans')
+                .select('score_history')
+                .eq('id', updated.scan_id)
+                .single();
+            const history = Array.isArray(scanData?.score_history) ? scanData.score_history : [];
+            history.push({
+                score: newScore,
+                timestamp: new Date().toISOString(),
+                action: dbStatus === 'false_positive' ? 'false_positive' : 'approved',
+                violation_id: id,
+            });
+            await supabase
+                .from('scans')
+                .update({ score_history: history })
+                .eq('id', updated.scan_id);
+        } catch (historyErr) {
+            // score_history column may not exist yet — non-critical
+            console.warn('[violations/PATCH] score_history update failed:', historyErr);
+        }
 
         // Return per CONTRACTS.md
         return NextResponse.json({

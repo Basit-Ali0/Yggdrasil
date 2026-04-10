@@ -39,7 +39,6 @@ export async function POST(request: NextRequest) {
         const { supabase, userId } = ctx;
         const org = orgFilter(ctx);
 
-        // 1. Get mapping config
         const mapping = await getMapping(request, mapping_id);
         if (!mapping) {
             return NextResponse.json(
@@ -48,7 +47,6 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // 2. Get uploaded data
         const upload = await getUpload(request, upload_id);
         if (!upload) {
             return NextResponse.json(
@@ -57,7 +55,6 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // 3. Get rules from Supabase
         const { data: dbRules, error: rulesError } = await supabase
             .from('rules')
             .select('*')
@@ -71,22 +68,24 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        const mappedRules: Rule[] = dbRules.map((r: any) => ({
-            rule_id: r.rule_id,
-            name: r.name,
-            type: r.type,
-            severity: r.severity,
-            threshold: r.threshold != null ? parseFloat(String(r.threshold)) : null,
+        const mappedRules: Rule[] = dbRules.map((rule: any) => ({
+            rule_id: rule.rule_id,
+            name: rule.name,
+            type: rule.type,
+            severity: rule.severity,
+            threshold: rule.threshold != null ? parseFloat(String(rule.threshold)) : null,
             time_window: (() => {
-                if (r.time_window == null || r.time_window === '') return null;
-                const n = parseInt(String(r.time_window), 10);
-                return Number.isFinite(n) ? n : null;
+                if (rule.time_window == null || rule.time_window === '') return null;
+                const parsedWindow = parseInt(String(rule.time_window), 10);
+                return Number.isFinite(parsedWindow) ? parsedWindow : null;
             })(),
-            conditions: r.conditions,
-            policy_excerpt: r.policy_excerpt ?? '',
-            policy_section: r.policy_section ?? '',
-            is_active: r.is_active,
-            description: r.description,
+            conditions: rule.conditions,
+            policy_excerpt: rule.policy_excerpt ?? '',
+            policy_section: rule.policy_section ?? '',
+            is_active: rule.is_active,
+            description: rule.description,
+            approved_count: rule.approved_count ?? 0,
+            false_positive_count: rule.false_positive_count ?? 0,
         }));
 
         const rules = filterExecutableRules(mappedRules);
@@ -142,7 +141,6 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // 4. Create scan record (status: running)
         const scanId = uuid();
         const scanRecord: Record<string, unknown> = {
             id: scanId,
@@ -159,16 +157,9 @@ export async function POST(request: NextRequest) {
         };
         if (org) scanRecord.organization_id = org;
         if (audit_id) scanRecord.audit_id = audit_id;
+        if (audit_name) scanRecord.audit_name = audit_name;
 
-        // Try with audit name first; fall back without it if column doesn't exist yet
-        if (audit_name) {
-            scanRecord.audit_name = audit_name;
-        }
-
-        const { error: scanCreateErr } = await supabase
-            .from('scans')
-            .insert(scanRecord);
-
+        const { error: scanCreateErr } = await supabase.from('scans').insert(scanRecord);
         if (scanCreateErr) {
             console.error('Scan create error:', scanCreateErr);
             return NextResponse.json(
@@ -177,21 +168,27 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // 5. Run scan (in-memory or DuckDB per backend-selection)
         const executor = new RuleExecutor({ rowCount: upload.rows.length });
         const {
             violations,
+            trueViolationCount,
             rulesProcessed,
             rulesTotal,
             executionBackend,
             executionReason,
             sampled,
             effectiveRowCount,
-        } = await executor.executeAll(rules, upload.rows, {
-            temporalScale: mapping.temporal_scale,
-            sampleLimit: 50000,
-            columnMapping: mapping.mapping_config,
-        });
+        } = await executor.executeAll(
+            rules,
+            upload.rows,
+            {
+                temporalScale: mapping.temporal_scale,
+                sampleLimit: 50000,
+                columnMapping: mapping.mapping_config,
+            },
+            upload.metadata
+        );
+
         logStructured('scan/run', 'scan_completed', {
             scan_id: scanId,
             policy_id,
@@ -199,92 +196,128 @@ export async function POST(request: NextRequest) {
             execution_reason: executionReason,
             rules_processed: rulesProcessed,
             rules_total: rulesTotal,
-            violation_count: violations.length,
+            violation_count: trueViolationCount,
+            stored_violation_count: violations.length,
             row_count: upload.rows.length,
             effective_row_count: effectiveRowCount,
             sampled,
         });
 
-        // 6. Calculate compliance score using actual rows processed (unsampled for DuckDB)
         const score = calculateComplianceScore(
             effectiveRowCount,
-            violations.map((v) => ({ severity: v.severity, status: v.status }))
+            violations.map((violation) => ({ severity: violation.severity, status: violation.status }))
         );
 
-        // 7. Insert violations into Supabase (batch)
         if (violations.length > 0) {
-            const violationRows = violations.map((v) => {
+            const violationRows = violations.map((violation) => {
                 const row: Record<string, unknown> = {
-                    id: v.id,
+                    id: violation.id,
                     scan_id: scanId,
-                    rule_id: v.rule_id,
-                    rule_name: v.rule_name,
-                    severity: v.severity,
-                    record_id: v.record_id,
-                    account: v.account,
-                    amount: v.amount,
-                    transaction_type: v.transaction_type,
-                    evidence: v.evidence,
-                    threshold: v.threshold,
-                    actual_value: v.actual_value,
-                    policy_excerpt: v.policy_excerpt,
-                    policy_section: v.policy_section,
-                    explanation: v.explanation,
+                    rule_id: violation.rule_id,
+                    rule_name: violation.rule_name,
+                    severity: violation.severity,
+                    record_id: violation.record_id,
+                    account: violation.account,
+                    amount: violation.amount,
+                    transaction_type: violation.transaction_type,
+                    evidence: violation.evidence,
+                    threshold: violation.threshold,
+                    actual_value: violation.actual_value,
+                    policy_excerpt: violation.policy_excerpt,
+                    policy_section: violation.policy_section,
+                    explanation: violation.explanation,
                     status: 'pending',
                 };
                 if (org) row.organization_id = org;
                 return row;
             });
 
-            // Insert in batches of 500 to avoid payload limits
-            const BATCH_SIZE = 500;
-            for (let i = 0; i < violationRows.length; i += BATCH_SIZE) {
-                const batch = violationRows.slice(i, i + BATCH_SIZE);
-                const { error: vError } = await supabase
-                    .from('violations')
-                    .insert(batch);
+            const batchSize = 2500;
+            const batches = [];
+            for (let i = 0; i < violationRows.length; i += batchSize) {
+                batches.push(violationRows.slice(i, i + batchSize));
+            }
 
-                if (vError) {
-                    console.error('Violations insert error (batch):', vError);
-                }
+            const concurrencyLimit = 5;
+            for (let i = 0; i < batches.length; i += concurrencyLimit) {
+                const chunk = batches.slice(i, i + concurrencyLimit);
+                await Promise.all(
+                    chunk.map(async (batch) => {
+                        const { error } = await supabase.from('violations').insert(batch);
+                        if (error) {
+                            console.error('[scan/run] violation batch insert error:', error);
+                        }
+                    })
+                );
             }
         }
 
-        // 8. Update scan to completed
-        const { error: scanUpdateErr } = await supabase
+        const completedAt = new Date().toISOString();
+        const initialScoreHistory = [
+            {
+                score,
+                timestamp: completedAt,
+                action: 'scan_completed',
+                violation_id: null,
+            },
+        ];
+
+        let scanUpdatePayload: Record<string, unknown> = {
+            status: 'completed',
+            violation_count: trueViolationCount,
+            compliance_score: score,
+            completed_at: completedAt,
+            score_history: initialScoreHistory,
+        };
+
+        let { error: scanUpdateErr } = await supabase
             .from('scans')
-            .update({
-                status: 'completed',
-                violation_count: violations.length,
-                compliance_score: score,
-                completed_at: new Date().toISOString(),
-            })
+            .update(scanUpdatePayload)
             .eq('id', scanId);
+
+        if (scanUpdateErr && (scanUpdateErr.code === '42703' || scanUpdateErr.message?.includes('score_history'))) {
+            scanUpdatePayload = {
+                status: 'completed',
+                violation_count: trueViolationCount,
+                compliance_score: score,
+                completed_at: completedAt,
+            };
+            const retry = await supabase.from('scans').update(scanUpdatePayload).eq('id', scanId);
+            scanUpdateErr = retry.error;
+        }
 
         if (scanUpdateErr) {
             console.error('Scan update error:', scanUpdateErr);
         }
 
-        // 9. Auto-create cases for AML scans (P3-04/P3-06)
+        try {
+            await supabase
+                .from('pii_findings')
+                .update({ scan_id: scanId })
+                .eq('upload_id', upload_id)
+                .is('scan_id', null);
+        } catch (error) {
+            console.warn('[scan/run] Failed to link PII findings:', error);
+        }
+
         let casesCreated = 0;
         let subjectsFlagged = 0;
 
         const policyType = await getPolicyType(supabase, policy_id);
         if (isAmlPolicyType(policyType) && violations.length > 0) {
             try {
-                const violationsForCases: ViolationForCase[] = violations.map((v) => ({
-                    id: v.id,
-                    rule_id: v.rule_id,
-                    rule_name: v.rule_name,
-                    severity: v.severity,
-                    account: v.account ?? '',
-                    amount: v.amount ?? 0,
-                    transaction_type: v.transaction_type,
-                    record_id: v.record_id,
-                    recipient: v.evidence?.recipient as string | undefined,
+                const violationsForCases: ViolationForCase[] = violations.map((violation) => ({
+                    id: violation.id,
+                    rule_id: violation.rule_id,
+                    rule_name: violation.rule_name,
+                    severity: violation.severity,
+                    account: violation.account ?? '',
+                    amount: violation.amount ?? 0,
+                    transaction_type: violation.transaction_type,
+                    record_id: violation.record_id,
+                    recipient: violation.evidence?.recipient as string | undefined,
                 }));
 
-                // Check for repeat subjects in this org
                 let existingSubjects: Set<string> | undefined;
                 if (org) {
                     const { data: priorCases } = await supabase
@@ -293,26 +326,26 @@ export async function POST(request: NextRequest) {
                         .eq('organization_id', org)
                         .neq('scan_id', scanId);
                     if (priorCases) {
-                        existingSubjects = new Set(priorCases.map((c: any) => c.subject_key));
+                        existingSubjects = new Set(priorCases.map((caseRow: any) => caseRow.subject_key));
                     }
                 }
 
                 const generatedCases = generateCases(violationsForCases, existingSubjects);
                 const persistedSubjects = new Set<string>();
 
-                for (const gc of generatedCases) {
+                for (const generatedCase of generatedCases) {
                     const caseRow: Record<string, unknown> = {
-                        id: gc.id,
+                        id: generatedCase.id,
                         scan_id: scanId,
                         policy_id,
-                        subject_key: gc.subject_key,
-                        subject_type: gc.subject_type,
-                        severity_rollup: gc.severity_rollup,
-                        violation_count: gc.violation_count,
-                        open_violations: gc.open_violations,
-                        suspicious_amount: gc.suspicious_amount,
-                        counterparty_count: gc.counterparty_count,
-                        priority_score: gc.priority_score,
+                        subject_key: generatedCase.subject_key,
+                        subject_type: generatedCase.subject_type,
+                        severity_rollup: generatedCase.severity_rollup,
+                        violation_count: generatedCase.violation_count,
+                        open_violations: generatedCase.open_violations,
+                        suspicious_amount: generatedCase.suspicious_amount,
+                        counterparty_count: generatedCase.counterparty_count,
+                        priority_score: generatedCase.priority_score,
                         status: 'open',
                     };
                     if (org) caseRow.organization_id = org;
@@ -328,17 +361,17 @@ export async function POST(request: NextRequest) {
                     }
 
                     casesCreated++;
-                    persistedSubjects.add(gc.subject_key);
+                    persistedSubjects.add(generatedCase.subject_key);
 
-                    await supabase.from('violations').update({ case_id: gc.id }).in('id', gc.violation_ids);
+                    await supabase.from('violations').update({ case_id: generatedCase.id }).in('id', generatedCase.violation_ids);
                     await supabase.from('case_events').insert({
-                        case_id: gc.id,
+                        case_id: generatedCase.id,
                         event_type: 'created',
                         actor_id: userId,
                         payload: {
-                            subject_key: gc.subject_key,
-                            violation_count: gc.violation_count,
-                            severity_rollup: gc.severity_rollup,
+                            subject_key: generatedCase.subject_key,
+                            violation_count: generatedCase.violation_count,
+                            severity_rollup: generatedCase.severity_rollup,
                         },
                     });
                 }
@@ -354,7 +387,6 @@ export async function POST(request: NextRequest) {
             status: 'completed',
             ...(casesCreated > 0 ? { cases_created: casesCreated, subjects_flagged: subjectsFlagged } : {}),
         });
-
     } catch (err) {
         if (err instanceof AuthError) {
             return NextResponse.json(

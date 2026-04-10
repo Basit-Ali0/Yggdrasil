@@ -15,7 +15,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ShieldAlert, ArrowLeft, ArrowUpDown, Search } from 'lucide-react';
+import { toast } from 'sonner';
+import { ShieldAlert, ArrowLeft, ArrowUpDown, Search, X, Check } from 'lucide-react';
 import type { ViolationCase } from '@/lib/contracts';
 
 type SortField = 'account_id' | 'violation_count' | 'max_severity' | 'total_amount';
@@ -211,7 +212,41 @@ export default function CasesPage() {
                                                 {c.top_rule}
                                             </TableCell>
                                             <TableCell className="text-right font-mono-code text-sm">
-                                                ${c.total_amount.toLocaleString()}
+                                                <div className="flex items-center justify-end gap-3">
+                                                    <span>{c.total_amount > 0 ? `$${c.total_amount.toLocaleString()}` : '—'}</span>
+                                                    <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-7 w-7 text-muted-foreground hover:text-ruby"
+                                                            title="Mark as False Positive"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                if (c.violations[0]) {
+                                                                    useViolationStore.getState().reviewViolation(c.violations[0].id, { status: 'false_positive' });
+                                                                    toast.success('Marked as false positive');
+                                                                }
+                                                            }}
+                                                        >
+                                                            <X className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-7 w-7 text-muted-foreground hover:text-emerald"
+                                                            title="Confirm Violation"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                if (c.violations[0]) {
+                                                                    useViolationStore.getState().reviewViolation(c.violations[0].id, { status: 'approved' });
+                                                                    toast.success('Violation confirmed');
+                                                                }
+                                                            }}
+                                                        >
+                                                            <Check className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                    </div>
+                                                </div>
                                             </TableCell>
                                         </TableRow>
                                     ))}

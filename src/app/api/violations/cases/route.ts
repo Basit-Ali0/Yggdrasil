@@ -64,6 +64,7 @@ export async function GET(request: NextRequest) {
                 severity: v.severity,
                 amount: parseFloat(v.amount ?? 0),
                 explanation: v.explanation,
+                status: v.status,
             });
 
             // Update max severity
@@ -78,6 +79,11 @@ export async function GET(request: NextRequest) {
         }
 
         const cases = Array.from(caseMap.values());
+        
+        // Filter out cases that are ONLY false positives for the main summary count
+        const activeCases = cases.filter(c => 
+            c.violations.some((v: any) => v.status !== 'false_positive')
+        );
 
         // Get compliance score for this scan
         const { data: scan } = await supabase
@@ -87,9 +93,9 @@ export async function GET(request: NextRequest) {
             .single();
 
         return NextResponse.json({
-            cases,
-            total_cases: cases.length,
-            total_violations: violations?.length ?? 0,
+            cases, // Still return all cases for the full list
+            total_cases: activeCases.length,
+            total_violations: violations?.filter(v => v.status !== 'false_positive').length ?? 0,
             compliance_score: scan?.compliance_score ?? 0,
         });
 

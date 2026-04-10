@@ -28,7 +28,7 @@ interface AuditState {
 
     // Data
     auditName: string;
-    policyType: 'aml' | 'gdpr' | 'soc2' | null;
+    policyType: 'aml' | 'gdpr' | 'soc2' | 'pdf' | null;
     rules: Rule[];
     step: AuditStep;
 
@@ -63,7 +63,7 @@ const initialState = {
     mappingId: null as string | null,
     scanId: null as string | null,
     auditName: '',
-    policyType: null as 'aml' | 'gdpr' | 'soc2' | null,
+    policyType: null as 'aml' | 'gdpr' | 'soc2' | 'pdf' | null,
     rules: [] as Rule[],
     step: 'new' as AuditStep,
     uploadData: null as UploadDataResponse | null,

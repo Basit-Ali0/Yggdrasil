@@ -96,12 +96,45 @@ export async function POST(request: NextRequest) {
 
         // Store upload (durable-first + in-memory fallback)
         const uploadId = uuid();
+        const metadata = {
+            totalRows: rows.length,
+            columnStats: {} as Record<string, {
+                min?: number;
+                max?: number;
+                mean?: number;
+                cardinality: number;
+                type: 'numeric' | 'categorical' | 'text';
+            }>,
+        };
+
+        headers.forEach((header) => {
+            const values = rows
+                .map((row) => row[header])
+                .filter((value) => value !== null && value !== undefined && value !== '');
+            const numericValues = values
+                .map((value) => (typeof value === 'number' ? value : Number(value)))
+                .filter((value) => Number.isFinite(value));
+            const isNumeric = values.length > 0 && numericValues.length === values.length;
+            const uniqueValues = new Set(values.map((value) => String(value)));
+
+            metadata.columnStats[header] = {
+                type: isNumeric ? 'numeric' : 'categorical',
+                cardinality: uniqueValues.size,
+                ...(isNumeric && numericValues.length > 0
+                    ? {
+                          min: Math.min(...numericValues),
+                          max: Math.max(...numericValues),
+                          mean: numericValues.reduce((sum, value) => sum + value, 0) / numericValues.length,
+                      }
+                    : {}),
+            };
+        });
         let uploadOrgId: string | undefined;
         try {
             const ctx = await resolveOrgContext(request);
             uploadOrgId = orgFilter(ctx) ?? undefined;
         } catch { /* unauthenticated uploads still work */ }
-        await saveUpload(request, uploadId, { rows, headers, fileName: file.name }, uploadOrgId);
+        await saveUpload(request, uploadId, { rows, headers, fileName: file.name, metadata }, uploadOrgId);
 
         // Response per CONTRACTS.md
         return NextResponse.json({
@@ -114,6 +147,7 @@ export async function POST(request: NextRequest) {
             mapping_confidence: mappingConfidence,
             temporal_scale: temporalScale,
             clarification_questions: clarificationQuestions,
+            metadata,
         });
 
     } catch (err) {

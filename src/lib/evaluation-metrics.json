@@ -1,0 +1,24 @@
+{
+  "precision": 1.7,
+  "recall": 91,
+  "f1_score": 3.4,
+  "fraud_detected": 91,
+  "total_fraud": 100,
+  "detection_rate": 91,
+  "dataset": "PaySim Fraud Detection Dataset",
+  "total_transactions": 50000,
+  "display_metrics": {
+    "primary": "detection_rate",
+    "secondary": [
+      "precision",
+      "recall"
+    ]
+  },
+  "confusion_matrix": {
+    "tp": 91,
+    "fp": 5113,
+    "fn": 9,
+    "tn": 44787
+  },
+  "generated_at": "2026-02-22T00:56:04.881Z"
+}

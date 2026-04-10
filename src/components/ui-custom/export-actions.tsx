@@ -20,6 +20,11 @@ interface ExportActionsProps {
     totalViolations: number;
     criticalCount: number;
     highCount: number;
+    mediumCount?: number;
+    falsePositiveCount?: number;
+    accountsFlagged?: number;
+    recordCount?: number;
+    auditName?: string;
 }
 
 export function ExportActions({

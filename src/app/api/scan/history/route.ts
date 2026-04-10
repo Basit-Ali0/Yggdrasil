@@ -1,10 +1,59 @@
 // ============================================================
 // GET /api/scan/history — Scan history for the current org
+// Includes delta (new/resolved counts) per scan
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
 import { AuthError } from '@/lib/supabase';
 import { resolveOrgContext, orgFilter } from '@/lib/org-context';
+
+async function calculateScanDelta(
+    supabase: any,
+    scan: any,
+    allScans: any[]
+): Promise<{ new_count: number; resolved_count: number; unchanged_count: number } | null> {
+    const previousScan = allScans.find(
+        (candidate) =>
+            candidate.policy_id === scan.policy_id &&
+            candidate.created_at < scan.created_at &&
+            candidate.status === 'completed'
+    );
+
+    if (!previousScan) return null;
+
+    const { data: currentViolations } = await supabase
+        .from('violations')
+        .select('rule_id, account')
+        .eq('scan_id', scan.id);
+
+    const { data: previousViolations } = await supabase
+        .from('violations')
+        .select('rule_id, account')
+        .eq('scan_id', previousScan.id);
+
+    const currentSignatures = new Set(
+        (currentViolations ?? []).map((violation: any) => `${violation.rule_id}:${violation.account}`)
+    );
+    const previousSignatures = new Set(
+        (previousViolations ?? []).map((violation: any) => `${violation.rule_id}:${violation.account}`)
+    );
+
+    let newCount = 0;
+    let resolvedCount = 0;
+
+    for (const signature of currentSignatures) {
+        if (!previousSignatures.has(signature)) newCount++;
+    }
+    for (const signature of previousSignatures) {
+        if (!currentSignatures.has(signature)) resolvedCount++;
+    }
+
+    return {
+        new_count: newCount,
+        resolved_count: resolvedCount,
+        unchanged_count: currentSignatures.size - newCount,
+    };
+}
 
 export async function GET(request: NextRequest) {
     try {
@@ -14,13 +63,11 @@ export async function GET(request: NextRequest) {
         let query = ctx.supabase
             .from('scans')
             .select('*')
+            .eq('status', 'completed')
             .order('created_at', { ascending: false });
 
-        if (org) {
-            query = query.eq('organization_id', org);
-        } else {
-            query = query.eq('user_id', ctx.userId);
-        }
+        if (org) query = query.eq('organization_id', org);
+        else query = query.eq('user_id', ctx.userId);
 
         const { data: scans, error } = await query;
 
@@ -31,19 +78,26 @@ export async function GET(request: NextRequest) {
             );
         }
 
-        return NextResponse.json({
-            scans: (scans ?? []).map((s: any) => ({
-                id: s.id,
-                policy_id: s.policy_id,
-                score: s.compliance_score,
-                violation_count: s.violation_count,
-                status: s.status,
-                created_at: s.created_at,
-                completed_at: s.completed_at,
-                audit_name: s.audit_name ?? null,
-            })),
-        });
+        const scansWithDelta = await Promise.all(
+            (scans ?? []).map(async (scan: any) => {
+                const delta = await calculateScanDelta(ctx.supabase, scan, scans ?? []);
+                return {
+                    id: scan.id,
+                    policy_id: scan.policy_id,
+                    score: scan.compliance_score,
+                    violation_count: scan.violation_count,
+                    new_violations: delta?.new_count ?? 0,
+                    resolved_violations: delta?.resolved_count ?? 0,
+                    unchanged_count: delta?.unchanged_count ?? 0,
+                    status: scan.status,
+                    created_at: scan.created_at,
+                    completed_at: scan.completed_at,
+                    audit_name: scan.audit_name ?? null,
+                };
+            })
+        );
 
+        return NextResponse.json({ scans: scansWithDelta });
     } catch (err) {
         if (err instanceof AuthError) {
             return NextResponse.json(

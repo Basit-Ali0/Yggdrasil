@@ -109,7 +109,7 @@ function buildGenericWhere(rule: Rule): string | null {
     const cond = rule.conditions;
     if (!cond?.field) return null;
     const col = sqlColumnForField(cond.field);
-    const op = normalizeOperator(cond.operator);
+    const op = normalizeOperator(cond.operator ?? '');
     const ref = `${NORM_TABLE}.${col}`;
 
     switch (op) {

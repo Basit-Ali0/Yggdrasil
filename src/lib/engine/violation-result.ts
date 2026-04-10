@@ -18,4 +18,5 @@ export interface ViolationResult {
     policy_section: string;
     explanation: string;
     status: 'pending';
+    confidence?: number;
 }

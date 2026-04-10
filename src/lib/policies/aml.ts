@@ -43,13 +43,18 @@ export const AML_RULES: Rule[] = [
         severity: 'CRITICAL',
         threshold: 10000,
         time_window: null,
-        conditions: { field: 'amount', operator: '>=', value: 10000 },
+        conditions: {
+            AND: [
+                { field: 'type', operator: 'IN', value: ['CASH_OUT', 'TRANSFER', 'WIRE'] },
+                { field: 'amount', operator: '>=', value: 10000 }
+            ]
+        },
         policy_excerpt:
-            'Transactions exceeding $10,000 must be reported to FinCEN via a Currency Transaction Report.',
+            'Transactions exceeding $10,000 via CASH_OUT, TRANSFER, or WIRE must be reported to FinCEN.',
         policy_section: 'Section 1 - Currency Transaction Reporting',
         is_active: true,
         category: 'ctr_reporting',
-        description: 'Flag transactions exceeding $10,000 CTR reporting threshold.',
+        description: 'Flag high-value cash-out/transfers exceeding $10,000 threshold.',
         historical_context: {
             avg_fine: '$1.4B (HSBC 2012 fine - failure to monitor transactions)',
             breach_example: 'HSBC allowed $881M in money laundering by drug cartels.',
@@ -123,13 +128,18 @@ export const AML_RULES: Rule[] = [
         severity: 'HIGH',
         threshold: 5000,
         time_window: null,
-        conditions: { field: 'amount', operator: '>=', value: 5000 },
+        conditions: {
+            AND: [
+                { field: 'type', operator: 'IN', value: ['TRANSFER', 'WIRE', 'CASH_OUT'] },
+                { field: 'amount', operator: '>=', value: 5000 }
+            ]
+        },
         policy_excerpt:
-            'The Institution shall file a SAR for any transaction totaling $5,000 or more where it suspects the transaction involves funds derived from illegal activity.',
+            'The Institution shall file a SAR for any transaction totaling $5,000 or more where it suspects illegal activity.',
         policy_section: 'Section 3 - Suspicious Activity Reporting',
         is_active: true,
         category: 'suspicious_activity',
-        description: 'Flag transactions >= $5K with suspicious patterns for SAR review.',
+        description: 'Flag transactions >= $5K with high-risk types for SAR review.',
         historical_context: {
             avg_fine: '$450M (Capital One 2021 fine - SAR program failures)',
             breach_example: 'Bank failed to file SARs on millions of dollars in suspicious activity.',
@@ -223,13 +233,19 @@ export const AML_RULES: Rule[] = [
         severity: 'HIGH',
         threshold: null,
         time_window: null,
-        conditions: { field: 'oldbalanceDest', operator: '==', value: 0 },
+        conditions: {
+            AND: [
+                { field: 'type', operator: 'IN', value: ['CASH_OUT', 'TRANSFER'] },
+                { field: 'oldbalanceDest', operator: '==', value: 0 },
+                { field: 'newbalanceDest', operator: '>', value: 0 }
+            ]
+        },
         policy_excerpt:
-            'Transactions to accounts with zero prior balance may indicate fraudulent activity.',
+            'Transactions to accounts with zero prior balance that result in a credit may indicate fraudulent activity.',
         policy_section: 'Section 5 - Fraud Detection',
         is_active: true,
         category: 'fraud_detection',
-        description: 'Flag transactions to empty accounts (potential fraud).',
+        description: 'Flag cash-out/transfers to previously empty accounts.',
         historical_context: {
             avg_fine: '$3.4B (Combined annual impact of transaction fraud)',
             breach_example: 'Attacker emptied multiple newly-created accounts via rapid transfers.',
@@ -243,7 +259,12 @@ export const AML_RULES: Rule[] = [
         severity: 'HIGH',
         threshold: 50000,
         time_window: null,
-        conditions: { field: 'amount', operator: '>', value: 50000 },
+        conditions: {
+            AND: [
+                { field: 'type', operator: 'IN', value: ['TRANSFER', 'WIRE'] },
+                { field: 'amount', operator: '>', value: 50000 }
+            ]
+        },
         policy_excerpt: 'Flag any WIRE or TRANSFER transaction exceeding $50,000.',
         policy_section: 'Section 5 - High Value Transfer Monitoring',
         is_active: true,

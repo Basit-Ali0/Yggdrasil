@@ -15,6 +15,8 @@ import {
     type ForcedExecutionBackend,
 } from './backend-selection';
 import { logStructured } from '@/lib/structured-log';
+import { validateRuleQuality } from './rule-quality-validator';
+import type { DatasetMetadata } from '../upload-store';
 
 async function finalize<T>(value: T | Promise<T>): Promise<T> {
     return await Promise.resolve(value);
@@ -26,6 +28,42 @@ export type RuleExecutorOptions = {
     /** Override env-based backend selection (tests / rollout). */
     forceBackend?: ForcedExecutionBackend;
 };
+
+function calculateConfidence(
+    violation: ViolationResult,
+    rule: Rule,
+    metadata?: DatasetMetadata
+): number {
+    const quality = validateRuleQuality(rule);
+    let score = quality.score / 100;
+
+    if (rule.conditions && typeof rule.conditions === 'object' && 'AND' in rule.conditions) {
+        const andConditions = rule.conditions.AND;
+        if (Array.isArray(andConditions)) {
+            score += andConditions.length * 0.05;
+        }
+    }
+
+    if (metadata && violation.amount) {
+        const stats = metadata.columnStats.amount;
+        if (stats && stats.type === 'numeric' && stats.mean) {
+            const ratioToMean = violation.amount / stats.mean;
+            if (ratioToMean > 10) score += 0.2;
+            else if (ratioToMean > 5) score += 0.1;
+            else if (ratioToMean < 0.1) score += 0.05;
+        }
+    }
+
+    const tp = rule.approved_count || 0;
+    const fp = rule.false_positive_count || 0;
+    const historicalPrecision = (1 + tp) / (2 + tp + fp);
+    const reviewCount = tp + fp;
+    const historyWeight = Math.min(0.7, reviewCount / 20);
+    score = score * (1 - historyWeight) + historicalPrecision * historyWeight;
+
+    if (rule.severity === 'CRITICAL') score += 0.1;
+    return Math.max(0, Math.min(1, score));
+}
 
 export class RuleExecutor {
     private readonly memoryBackend: InMemoryBackend;
@@ -52,9 +90,11 @@ export class RuleExecutor {
     async executeAll(
         rules: Rule[],
         rawRecords: Record<string, any>[],
-        config: ExecutionConfig
+        config: ExecutionConfig,
+        metadata?: DatasetMetadata
     ): Promise<{
         violations: ViolationResult[];
+        trueViolationCount: number;
         rulesProcessed: number;
         rulesTotal: number;
         executionBackend: string;
@@ -108,6 +148,7 @@ export class RuleExecutor {
 
         const violations: ViolationResult[] = [];
         let rulesProcessed = 0;
+        let trueViolationCount = 0;
 
         // Lazy normalized fallback for the rare case DuckDB can't handle a rule type
         let lazyNormalized: NormalizedRecord[] | null = null;
@@ -142,15 +183,29 @@ export class RuleExecutor {
                 const batch = await finalize(
                     backend.execute(engineRule, backendRecords, config.temporalScale)
                 );
-                violations.push(...batch);
+                trueViolationCount += batch.length;
+
+                const violationCap = 1000;
+                const finalBatch = batch.length > violationCap ? batch.slice(0, violationCap) : batch;
+                const scoredBatch = finalBatch.map((violation) => ({
+                    ...violation,
+                    confidence: calculateConfidence(violation, rule, metadata),
+                }));
+
+                violations.push(...scoredBatch);
                 rulesProcessed++;
             }
         } finally {
             await finalize(primary.dispose?.() ?? Promise.resolve());
         }
 
+        const rankedViolations = [...violations].sort(
+            (a, b) => (b.confidence || 0) - (a.confidence || 0)
+        );
+
         return {
-            violations,
+            violations: rankedViolations,
+            trueViolationCount,
             rulesProcessed,
             rulesTotal: activeRules.length,
             executionBackend: primary.name,

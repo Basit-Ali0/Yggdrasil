@@ -73,6 +73,17 @@ export function maskPII(value: string, piiType: string): string {
     }
 }
 
+// ── Strip JS regex literal delimiters ────────────────────────
+// Gemini often returns "/pattern/flags" format but new RegExp() expects raw pattern
+
+function parseRegexString(raw: string): RegExp {
+    const literalMatch = raw.match(/^\/(.+)\/([gimsuy]*)$/);
+    if (literalMatch) {
+        return new RegExp(literalMatch[1], literalMatch[2]);
+    }
+    return new RegExp(raw);
+}
+
 // ── Execute PII detection against all rows ──────────────────
 
 export function executePIIDetection(
@@ -83,17 +94,21 @@ export function executePIIDetection(
 
     for (const finding of findings) {
         // Only process columns that contain PII with sufficient confidence
-        if (!finding.contains_pii || finding.confidence < 0.6) continue;
+        // Confidence is 0-100 scale
+        if (!finding.contains_pii || finding.confidence < 60) continue;
+
+        const piiType = finding.pii_type ?? 'other';
 
         // Compile the regex with fallback
         let regex: RegExp;
         try {
-            regex = new RegExp(finding.detection_regex);
+            if (!finding.detection_regex) throw new Error('No regex provided');
+            regex = parseRegexString(finding.detection_regex);
         } catch {
             console.warn(
-                `[PII] Invalid regex for ${finding.column_name}, using fallback for ${finding.pii_type}`,
+                `[PII] Invalid regex for ${finding.column_name}, using fallback for ${piiType}`,
             );
-            regex = getFallbackRegex(finding.pii_type);
+            regex = getFallbackRegex(piiType);
         }
 
         let matchCount = 0;
@@ -110,7 +125,7 @@ export function executePIIDetection(
 
                 // Collect up to 3 masked sample values
                 if (maskedSamples.length < 3) {
-                    maskedSamples.push(maskPII(strValue, finding.pii_type));
+                    maskedSamples.push(maskPII(strValue, piiType));
                 }
             }
         }
@@ -121,16 +136,16 @@ export function executePIIDetection(
 
         results.push({
             column_name: finding.column_name,
-            pii_type: finding.pii_type,
-            severity: finding.severity,
+            pii_type: piiType,
+            severity: finding.severity ?? 'MEDIUM',
             confidence: finding.confidence,
             match_count: matchCount,
             total_rows: totalRows,
             match_percentage: matchPercentage,
             masked_samples: maskedSamples,
-            detection_regex: finding.detection_regex,
-            violation_text: finding.violation_text,
-            suggestion: finding.suggestion,
+            detection_regex: finding.detection_regex ?? '',
+            violation_text: finding.violation_text ?? '',
+            suggestion: finding.suggestion ?? '',
         });
     }
 

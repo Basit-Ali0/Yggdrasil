@@ -18,11 +18,13 @@ import { EvidenceDrawer } from '@/components/evidence-drawer';
 import { PolicyUpdateSheet } from '@/components/policy-update-sheet';
 import { RescanDialog } from '@/components/rescan-dialog';
 import { PIIDashboardCard } from '@/components/pii-dashboard-card';
+import { ScoreHistoryChart } from '@/components/ui-custom/score-history-chart';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ShieldAlert, AlertTriangle, Users, ChevronDown, ArrowRight, Settings2, RefreshCw } from 'lucide-react';
+import { toast } from 'sonner';
+import { ShieldAlert, AlertTriangle, Users, ChevronDown, ArrowRight, Settings2, RefreshCw, X, Check } from 'lucide-react';
 import type { ViolationCase, ScanStatusResponse } from '@/lib/contracts';
 
 // -- Aggregation types --
@@ -51,6 +53,10 @@ function buildAggregation(cases: ViolationCase[]): SeverityGroup[] {
 
     for (const c of cases) {
         for (const v of c.violations) {
+            // Only aggregate pending or approved violations for the summary
+            // This reduces "spam" from false positives
+            if (v.status === 'false_positive') continue;
+
             const sev = v.severity;
             const rule = v.rule_id;
             const account = c.account_id;
@@ -184,8 +190,13 @@ export default function DashboardPage() {
             {/* Header with Export */}
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                    <h1 className="text-2xl font-semibold tracking-tight">
+                    <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
                         {auditName ? `${auditName} - Compliance Dashboard` : 'Compliance Dashboard'}
+                        {currentScan?.delta && (
+                            <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                                Rescan
+                            </Badge>
+                        )}
                     </h1>
                     <p className="mt-1 text-muted-foreground">
                         Scan results and compliance score for your audit.
@@ -219,6 +230,11 @@ export default function DashboardPage() {
                         totalViolations={totalViolations}
                         criticalCount={criticalCount}
                         highCount={highCount}
+                        mediumCount={scoreDetails?.by_severity?.MEDIUM ?? 0}
+                        falsePositiveCount={scoreDetails?.false_positives ?? 0}
+                        accountsFlagged={totalCases}
+                        recordCount={currentScan?.record_count}
+                        auditName={auditName}
                     />
                 </div>
             </div>
@@ -247,10 +263,40 @@ export default function DashboardPage() {
                 />
             </div>
 
-            {/* PII Alerts */}
-            <PIIDashboardCard scanId={scanId} />
+            {/* Delta Display - Compare to previous scan */}
+            {currentScan?.delta && (
+                <div className="flex items-center justify-center gap-4 py-3 px-4 bg-muted/50 rounded-lg border">
+                    <span className="text-sm text-muted-foreground">Compared to previous scan:</span>
+                    <div className="flex items-center gap-3">
+                        {currentScan.delta.new_count > 0 && (
+                            <div className="flex items-center gap-1.5">
+                                <span className="w-2 h-2 rounded-full bg-blue-500" />
+                                <span className="text-sm font-medium">{currentScan.delta.new_count} new</span>
+                            </div>
+                        )}
+                        {currentScan.delta.resolved_count > 0 && (
+                            <div className="flex items-center gap-1.5">
+                                <span className="w-2 h-2 rounded-full bg-green-500" />
+                                <span className="text-sm font-medium">{currentScan.delta.resolved_count} resolved</span>
+                            </div>
+                        )}
+                        {currentScan.delta.unchanged_count > 0 && (
+                            <div className="flex items-center gap-1.5">
+                                <span className="w-2 h-2 rounded-full bg-gray-400" />
+                                <span className="text-sm font-medium">{currentScan.delta.unchanged_count} unchanged</span>
+                            </div>
+                        )}
+                        {currentScan.delta.new_count === 0 && currentScan.delta.resolved_count === 0 && currentScan.delta.unchanged_count === 0 && (
+                            <span className="text-sm text-muted-foreground">No changes</span>
+                        )}
+                    </div>
+                </div>
+            )}
 
-            {/* Aggregated Violations */}
+            {/* Main Content: Violations (left) + Sidebar (right) */}
+            <div className="grid gap-6 lg:grid-cols-3">
+            {/* Left Column: Violations */}
+            <div className="lg:col-span-2 space-y-6">
             <Card>
                 <CardHeader className="pb-3">
                     <CardTitle className="flex items-center justify-between text-base">
@@ -306,18 +352,51 @@ export default function DashboardPage() {
                                                     <CollapsibleContent>
                                                         <div className="ml-8 mt-1 space-y-1">
                                                             {ruleGroup.accounts.map((acc) => (
-                                                                <button
-                                                                    key={acc.account_id}
-                                                                    className="flex w-full items-center justify-between rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted/50"
-                                                                    onClick={() => acc.violation_ids[0] && handleViolationClick(acc.violation_ids[0])}
-                                                                >
-                                                                    <span className="font-mono-code">
-                                                                        {acc.account_id}
-                                                                    </span>
-                                                                    <span className="font-mono-code">
-                                                                        ${acc.total_amount.toLocaleString()}
-                                                                    </span>
-                                                                </button>
+                                                                <div key={acc.account_id} className="group flex items-center gap-2">
+                                                                    <button
+                                                                        className="flex flex-1 items-center justify-between rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted/50"
+                                                                        onClick={() => acc.violation_ids[0] && handleViolationClick(acc.violation_ids[0])}
+                                                                    >
+                                                                        <span className="font-mono-code">
+                                                                            {acc.account_id}
+                                                                        </span>
+                                                                        <span className="font-mono-code">
+                                                                            {acc.total_amount > 0 ? `$${acc.total_amount.toLocaleString()}` : '—'}
+                                                                        </span>
+                                                                    </button>
+                                                                    <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="icon"
+                                                                            className="h-7 w-7 text-muted-foreground hover:text-ruby"
+                                                                            title="Mark as False Positive"
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                if (acc.violation_ids[0]) {
+                                                                                    useViolationStore.getState().reviewViolation(acc.violation_ids[0], { status: 'false_positive' });
+                                                                                    toast.success('Marked as false positive');
+                                                                                }
+                                                                            }}
+                                                                        >
+                                                                            <X className="h-3.5 w-3.5" />
+                                                                        </Button>
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="icon"
+                                                                            className="h-7 w-7 text-muted-foreground hover:text-emerald"
+                                                                            title="Confirm Violation"
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                if (acc.violation_ids[0]) {
+                                                                                    useViolationStore.getState().reviewViolation(acc.violation_ids[0], { status: 'approved' });
+                                                                                    toast.success('Violation confirmed');
+                                                                                }
+                                                                            }}
+                                                                        >
+                                                                            <Check className="h-3.5 w-3.5" />
+                                                                        </Button>
+                                                                    </div>
+                                                                </div>
                                                             ))}
                                                         </div>
                                                     </CollapsibleContent>
@@ -331,6 +410,18 @@ export default function DashboardPage() {
                     )}
                 </CardContent>
             </Card>
+            </div>
+
+            {/* Right Column: Chart + PII */}
+            <div className="space-y-6">
+                <ScoreHistoryChart
+                    scoreHistory={currentScan?.score_history ?? []}
+                    initialScore={complianceScore}
+                    completedAt={currentScan?.completed_at}
+                />
+                <PIIDashboardCard scanId={scanId} uploadId={currentScan?.upload_id} />
+            </div>
+            </div>
 
             {/* Evidence Drawer */}
             <EvidenceDrawer

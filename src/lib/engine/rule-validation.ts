@@ -3,7 +3,7 @@
 // Run after `normalizeRuleForEngine` internally; callers may pass raw DB rules.
 // ============================================================
 
-import type { Rule, RuleCondition } from '../types';
+import type { Rule, RuleCondition, RuleConditions, CompoundCondition } from '../types';
 import { WINDOWED_RULE_TYPES } from '../types';
 import { normalizeRuleForEngine } from './rule-engine-normalize';
 
@@ -150,6 +150,85 @@ function validateConditionValue(
     }
 }
 
+function validateConditionNode(
+    cond: RuleConditions,
+    issues: RuleValidationIssue[],
+    path = 'conditions'
+): void {
+    if (cond == null || typeof cond !== 'object' || Array.isArray(cond)) {
+        issues.push({
+            category: 'invalid_condition_shape',
+            message: 'conditions must be a non-array object',
+            path,
+        });
+        return;
+    }
+
+    const compound = cond as CompoundCondition;
+    const andChildren = Array.isArray(compound.AND) ? compound.AND : null;
+    const orChildren = Array.isArray(compound.OR) ? compound.OR : null;
+
+    if (andChildren || orChildren) {
+        if (andChildren && andChildren.length === 0) {
+            issues.push({
+                category: 'invalid_condition_shape',
+                message: 'AND must contain at least one child condition',
+                path: `${path}.AND`,
+            });
+        }
+        if (orChildren && orChildren.length === 0) {
+            issues.push({
+                category: 'invalid_condition_shape',
+                message: 'OR must contain at least one child condition',
+                path: `${path}.OR`,
+            });
+        }
+
+        andChildren?.forEach((child: RuleConditions, index: number) =>
+            validateConditionNode(child, issues, `${path}.AND[${index}]`)
+        );
+        orChildren?.forEach((child: RuleConditions, index: number) =>
+            validateConditionNode(child, issues, `${path}.OR[${index}]`)
+        );
+        return;
+    }
+
+    if (typeof cond.field !== 'string' || !cond.field.trim()) {
+        issues.push({
+            category: 'missing_required_field',
+            message: 'conditions.field is required for generic executable rules',
+            path: `${path}.field`,
+        });
+    }
+
+    if (typeof cond.operator !== 'string' || !cond.operator.trim()) {
+        issues.push({
+            category: 'unsupported_operator',
+            message: 'conditions.operator is required',
+            path: `${path}.operator`,
+        });
+        return;
+    }
+
+    const cop = canonicalizeOperator(cond.operator);
+    if (cop === null) {
+        issues.push({
+            category: 'unsupported_operator',
+            message: `operator is not supported: ${cond.operator}`,
+            path: `${path}.operator`,
+        });
+        return;
+    }
+
+    const ve = validateConditionValue(cop, cond.value);
+    if (ve) {
+        issues.push({
+            ...ve,
+            path: ve.path === 'conditions.value' ? `${path}.value` : ve.path,
+        });
+    }
+}
+
 function validateThreshold(rule: Rule): RuleValidationIssue | null {
     if (rule.threshold === null || rule.threshold === undefined) return null;
     const t =
@@ -210,33 +289,7 @@ export function validateRuleForExecution(rule: Rule): RuleValidationResult {
         return { valid: issues.length === 0, issues, engineRule };
     }
 
-    if (typeof cond.field !== 'string' || !cond.field.trim()) {
-        issues.push({
-            category: 'missing_required_field',
-            message: 'conditions.field is required for generic executable rules',
-            path: 'conditions.field',
-        });
-    }
-
-    if (typeof cond.operator !== 'string' || !cond.operator.trim()) {
-        issues.push({
-            category: 'unsupported_operator',
-            message: 'conditions.operator is required',
-            path: 'conditions.operator',
-        });
-    } else {
-        const cop = canonicalizeOperator(cond.operator);
-        if (cop === null) {
-            issues.push({
-                category: 'unsupported_operator',
-                message: `operator is not supported: ${cond.operator}`,
-                path: 'conditions.operator',
-            });
-        } else {
-            const ve = validateConditionValue(cop, cond.value);
-            if (ve) issues.push(ve);
-        }
-    }
+    validateConditionNode(cond, issues);
 
     return {
         valid: issues.length === 0,

@@ -93,19 +93,53 @@ export async function geminiGenerateObject<T extends z.ZodType>(opts: {
     }
 
     try {
+        console.log(`[GEMINI] Calling Gemini API (model: ${MODEL_ID})...`);
+        
+        // Log expected shape (keys only for brevity)
+        if (opts.schema) {
+            try {
+                // In Zod, .shape exists on ZodObject
+                const shape = (opts.schema as any).shape || (opts.schema as any)._def?.shape?.();
+                if (shape) {
+                    console.log(`[GEMINI] Expected keys: [${Object.keys(shape).join(', ')}]`);
+                }
+            } catch (e) {
+                console.log(`[GEMINI] Could not extract schema shape for logging`);
+            }
+        }
+
+        const startTime = Date.now();
         const result = await withRetry(async () => {
-            const { object } = await generateObject({
-                model: google(MODEL_ID),
-                schema: opts.schema,
-                prompt: opts.prompt,
-                system: opts.system,
-            });
-            return object;
+            try {
+                const { object } = await generateObject({
+                    model: google(MODEL_ID),
+                    schema: opts.schema,
+                    prompt: opts.prompt,
+                    system: opts.system,
+                });
+                return object;
+            } catch (error: any) {
+                // Exhaustive logging for Vercel AI SDK / Zod validation errors
+                console.error(`[GEMINI] Validation Error Detail:`);
+                if (error.text) console.error(`  - Raw Response Text: ${error.text}`);
+                if (error.partialObject) console.error(`  - Partial Object Parsed:`, JSON.stringify(error.partialObject, null, 2));
+                if (error.warnings) console.error(`  - Warnings:`, JSON.stringify(error.warnings, null, 2));
+                
+                // If it's a Zod error inside the SDK error
+                if (error.cause?.issues) {
+                    console.error(`  - Zod Issues:`, JSON.stringify(error.cause.issues, null, 2));
+                }
+                
+                throw error;
+            }
         });
 
+        const duration = Date.now() - startTime;
+        console.log(`[GEMINI] Call successful in ${duration}ms`);
         geminiBreaker.recordSuccess();
         return result as z.infer<T>;
     } catch (error) {
+        console.error(`[GEMINI] Call failed after retries:`, error instanceof Error ? error.message : error);
         geminiBreaker.recordFailure();
         throw error;
     }

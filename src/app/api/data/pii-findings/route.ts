@@ -1,5 +1,6 @@
 // ============================================================
 // GET /api/data/pii-findings — Fetch PII findings for a scan
+// Now falls back to upload_id if no findings found by scan_id
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -20,8 +21,9 @@ export async function GET(request: NextRequest) {
 
         const supabase = getSupabase();
 
+        // Try fetching by scan_id first
         let query = supabase.from('pii_findings').select('*');
-
+        
         if (scanId) {
             query = query.eq('scan_id', scanId);
         } else if (uploadId) {
@@ -30,7 +32,22 @@ export async function GET(request: NextRequest) {
 
         query = query.order('severity', { ascending: true }).order('created_at', { ascending: false });
 
-        const { data, error } = await query;
+        let { data, error } = await query;
+
+        // If no findings by scan_id but upload_id provided, fallback to upload_id
+        if ((!data || data.length === 0) && scanId && uploadId) {
+            console.log('[PII Findings] No findings by scan_id, falling back to upload_id');
+            const fallback = await supabase
+                .from('pii_findings')
+                .select('*')
+                .eq('upload_id', uploadId)
+                .order('severity', { ascending: true })
+                .order('created_at', { ascending: false });
+            
+            if (!fallback.error) {
+                data = fallback.data;
+            }
+        }
 
         if (error) {
             console.error('[PII Findings] Supabase query error:', error);

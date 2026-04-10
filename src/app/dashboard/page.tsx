@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useScanStore } from '@/stores/scan-store';
@@ -19,16 +19,37 @@ import {
     Clock,
     Plus,
     ArrowRight,
+    Trash2,
+    Loader2,
 } from 'lucide-react';
+import { toast } from 'sonner';
 
 export default function DashboardIndexPage() {
     const router = useRouter();
     const { user } = useAuthStore();
-    const { scanHistory, fetchHistory, isLoadingHistory } = useScanStore();
+    const { scanHistory, fetchHistory, isLoadingHistory, deleteScan } = useScanStore();
+    const [isDeleting, setIsDeleting] = useState<string | null>(null);
 
     useEffect(() => {
         fetchHistory();
     }, [fetchHistory]);
+
+    const handleDelete = async (e: React.MouseEvent, id: string) => {
+        e.stopPropagation();
+        if (!confirm('Are you sure you want to delete this scan? This action cannot be undone.')) {
+            return;
+        }
+
+        setIsDeleting(id);
+        try {
+            await deleteScan(id);
+            toast.success('Scan deleted successfully');
+        } catch (err) {
+            toast.error('Failed to delete scan');
+        } finally {
+            setIsDeleting(null);
+        }
+    };
 
     if (isLoadingHistory) {
         return <DashboardSkeleton />;
@@ -124,6 +145,7 @@ export default function DashboardIndexPage() {
                                     <TableHead>Date</TableHead>
                                     <TableHead>Score</TableHead>
                                     <TableHead>Violations</TableHead>
+                                    <TableHead>Delta</TableHead>
                                     <TableHead>Status</TableHead>
                                     <TableHead className="text-right">Action</TableHead>
                                 </TableRow>
@@ -167,6 +189,24 @@ export default function DashboardIndexPage() {
                                             <Badge variant="secondary">{scan.violation_count ?? 0}</Badge>
                                         </TableCell>
                                         <TableCell>
+                                            {((scan as any).new_violations > 0 || (scan as any).resolved_violations > 0) ? (
+                                                <div className="flex items-center gap-1.5">
+                                                    {(scan as any).new_violations > 0 && (
+                                                        <span className="text-xs text-blue-600 font-medium">
+                                                            +{(scan as any).new_violations}
+                                                        </span>
+                                                    )}
+                                                    {(scan as any).resolved_violations > 0 && (
+                                                        <span className="text-xs text-green-600 font-medium">
+                                                            -{(scan as any).resolved_violations}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <span className="text-xs text-muted-foreground">—</span>
+                                            )}
+                                        </TableCell>
+                                        <TableCell>
                                             <Badge
                                                 variant={scan.status === 'completed' ? 'default' : 'outline'}
                                             >
@@ -174,7 +214,22 @@ export default function DashboardIndexPage() {
                                             </Badge>
                                         </TableCell>
                                         <TableCell className="text-right">
-                                            <ArrowRight className="ml-auto h-4 w-4 text-muted-foreground" />
+                                            <div className="flex items-center justify-end gap-2">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-8 w-8 text-muted-foreground hover:text-red-600"
+                                                    onClick={(e) => handleDelete(e, scan.id)}
+                                                    disabled={isDeleting === scan.id}
+                                                >
+                                                    {isDeleting === scan.id ? (
+                                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                                    ) : (
+                                                        <Trash2 className="h-4 w-4" />
+                                                    )}
+                                                </Button>
+                                                <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                                            </div>
                                         </TableCell>
                                     </TableRow>
                                 ))}

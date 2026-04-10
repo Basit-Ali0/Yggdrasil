@@ -8,7 +8,7 @@
 
 import { v4 as uuid } from 'uuid';
 import { Rule, NormalizedRecord, WINDOWED_RULE_TYPES } from '../types';
-import { normalizeTime, getWindowKey } from './temporal';
+import { getWindowKey } from './temporal';
 import {
     generateExplanation,
     generateWindowedExplanation,
@@ -34,6 +34,28 @@ function preFilterForSubThreshold(records: NormalizedRecord[]): NormalizedRecord
  */
 function isRoundAmount(x: number): boolean {
     return x % 1000 === 0;
+}
+
+function coerceEquals(left: any, right: any): boolean {
+    if (typeof left === typeof right) return left === right;
+
+    if (typeof right === 'boolean' && typeof left === 'string') {
+        return (left.toLowerCase() === 'true') === right;
+    }
+
+    if (typeof right === 'number' && typeof left === 'string') {
+        return parseFloat(left) === right;
+    }
+
+    if (typeof left === 'boolean' && typeof right === 'string') {
+        return left === (right.toLowerCase() === 'true');
+    }
+
+    if (typeof left === 'number' && typeof right === 'string') {
+        return left === parseFloat(right);
+    }
+
+    return left == right;
 }
 
 export class InMemoryBackend implements ExecutionBackend {
@@ -121,40 +143,89 @@ export class InMemoryBackend implements ExecutionBackend {
 
     private checkConditions(rule: Rule, record: NormalizedRecord): boolean {
         const cond = rule.conditions;
-        if (!cond || !cond.field) return false;
-        const value = record[cond.field];
+        if (!cond) return false;
 
-        // Normalize operator aliases from Gemini LLM output
+        return this.evaluateLogic(cond, record);
+    }
+
+    private evaluateLogic(cond: any, record: NormalizedRecord): boolean {
+        if (cond === null || cond === undefined || typeof cond !== 'object') {
+            return false;
+        }
+
+        if ('AND' in cond && Array.isArray(cond.AND)) {
+            return (cond.AND as any[]).every((child) => this.evaluateLogic(child, record));
+        }
+
+        if ('OR' in cond && Array.isArray(cond.OR)) {
+            return (cond.OR as any[]).some((child) => this.evaluateLogic(child, record));
+        }
+
+        if ('field' in cond) {
+            return this.checkSingleCondition(cond as any, record);
+        }
+
+        return false;
+    }
+
+    private checkSingleCondition(
+        cond: { field: string; operator: string; value: any; value_type?: string },
+        record: NormalizedRecord
+    ): boolean {
+        const leftValue = record[cond.field];
+        let rightValue = cond.value;
         const op = this.normalizeOperator(cond.operator);
+
+        if (op === 'EXISTS') {
+            return leftValue !== undefined && leftValue !== null && leftValue !== '';
+        }
+
+        if (op === 'NOT_EXISTS') {
+            return leftValue === undefined || leftValue === null || leftValue === '';
+        }
+
+        if (leftValue === undefined || leftValue === null) {
+            return false;
+        }
+
+        if (cond.value_type === 'field' && typeof rightValue === 'string') {
+            rightValue = record[rightValue];
+            if (rightValue === undefined || rightValue === null) return false;
+        }
 
         switch (op) {
             case '>=':
-                return (value as number) >= (cond.value as number);
+                return parseFloat(String(leftValue)) >= parseFloat(String(rightValue));
             case '>':
-                return (value as number) > (cond.value as number);
+                return parseFloat(String(leftValue)) > parseFloat(String(rightValue));
             case '<=':
-                return (value as number) <= (cond.value as number);
+                return parseFloat(String(leftValue)) <= parseFloat(String(rightValue));
             case '<':
-                return (value as number) < (cond.value as number);
+                return parseFloat(String(leftValue)) < parseFloat(String(rightValue));
             case '==':
-                return value == cond.value;
+                return coerceEquals(leftValue, rightValue);
             case '!=':
-                return value != cond.value;
+                return !coerceEquals(leftValue, rightValue);
             case 'IN':
-                return Array.isArray(cond.value) && cond.value.includes(value);
+                return Array.isArray(rightValue) && rightValue.includes(leftValue);
             case 'BETWEEN':
                 return (
-                    Array.isArray(cond.value) &&
-                    (value as number) >= cond.value[0] &&
-                    (value as number) <= cond.value[1]
+                    Array.isArray(rightValue) &&
+                    parseFloat(String(leftValue)) >= rightValue[0] &&
+                    parseFloat(String(leftValue)) <= rightValue[1]
                 );
-            case 'EXISTS':
-                return value !== undefined && value !== null && value !== '';
-            case 'NOT_EXISTS':
-                return value === undefined || value === null || value === '';
             case 'CONTAINS':
-                return typeof value === 'string' && typeof cond.value === 'string' &&
-                    value.toLowerCase().includes(cond.value.toLowerCase());
+                return (
+                    typeof leftValue === 'string' &&
+                    typeof rightValue === 'string' &&
+                    leftValue.toLowerCase().includes(rightValue.toLowerCase())
+                );
+            case 'MATCH':
+                return (
+                    typeof leftValue === 'string' &&
+                    typeof rightValue === 'string' &&
+                    new RegExp(rightValue).test(leftValue)
+                );
             default:
                 return false;
         }
@@ -178,6 +249,7 @@ export class InMemoryBackend implements ExecutionBackend {
             'less_than_or_equal': '<=', 'lte': '<=',
             'exists': 'EXISTS', 'not_exists': 'NOT_EXISTS',
             'contains': 'CONTAINS', 'includes': 'CONTAINS',
+            'match': 'MATCH', 'regex': 'MATCH',
         };
         return map[normalized] || op;
     }

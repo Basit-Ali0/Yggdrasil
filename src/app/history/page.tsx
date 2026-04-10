@@ -10,15 +10,35 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { History, Plus, ArrowRight } from 'lucide-react';
+import { History, Plus, ArrowRight, Trash2, Loader2 } from 'lucide-react';
+import { useState } from 'react';
+import { toast } from 'sonner';
 
 export default function HistoryPage() {
     const router = useRouter();
-    const { scanHistory, fetchHistory, isLoadingHistory } = useScanStore();
+    const { scanHistory, fetchHistory, isLoadingHistory, deleteScan } = useScanStore();
+    const [isDeleting, setIsDeleting] = useState<string | null>(null);
 
     useEffect(() => {
         fetchHistory();
     }, [fetchHistory]);
+
+    const handleDelete = async (e: React.MouseEvent, id: string) => {
+        e.stopPropagation();
+        if (!confirm('Are you sure you want to delete this scan? This action cannot be undone.')) {
+            return;
+        }
+
+        setIsDeleting(id);
+        try {
+            await deleteScan(id);
+            toast.success('Scan deleted successfully');
+        } catch (err) {
+            toast.error('Failed to delete scan');
+        } finally {
+            setIsDeleting(null);
+        }
+    };
 
     if (isLoadingHistory) {
         return <PageSkeleton />;
@@ -122,7 +142,22 @@ export default function HistoryPage() {
                                                 </Badge>
                                             </TableCell>
                                             <TableCell className="text-right">
-                                                <ArrowRight className="ml-auto h-4 w-4 text-muted-foreground" />
+                                                <div className="flex items-center justify-end gap-2">
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-8 w-8 text-muted-foreground hover:text-red-600"
+                                                        onClick={(e) => handleDelete(e, scan.id)}
+                                                        disabled={isDeleting === scan.id}
+                                                    >
+                                                        {isDeleting === scan.id ? (
+                                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                                        ) : (
+                                                            <Trash2 className="h-4 w-4" />
+                                                        )}
+                                                    </Button>
+                                                    <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                                                </div>
                                             </TableCell>
                                         </TableRow>
                                     ))}
