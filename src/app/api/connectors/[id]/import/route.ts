@@ -114,7 +114,13 @@ async function importFromPostgres(
 
         const schema = table.includes('.') ? table.split('.')[0] : 'public';
         const tableName = table.includes('.') ? table.split('.')[1] : table;
-        const safeTable = `"${schema}"."${tableName}"`;
+
+        if (!isValidIdentifier(schema) || !isValidIdentifier(tableName)) {
+            await client.end().catch(() => { });
+            throw new Error('Invalid table identifier');
+        }
+
+        const safeTable = `"${escapeIdent(schema)}"."${escapeIdent(tableName)}"`;
 
         const { rows, fields } = await client.query(`SELECT * FROM ${safeTable}`);
         await client.end();
@@ -158,4 +164,12 @@ async function importFromS3(
         rows: parsed.data as Record<string, unknown>[],
         headers: parsed.meta.fields ?? [],
     };
+}
+
+function escapeIdent(s: string): string {
+    return s.replace(/"/g, '""');
+}
+
+function isValidIdentifier(s: string): boolean {
+    return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(s);
 }

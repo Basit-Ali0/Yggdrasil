@@ -73,7 +73,11 @@ async function previewPostgres(
 
         const schema = table.includes('.') ? table.split('.')[0] : 'public';
         const tableName = table.includes('.') ? table.split('.')[1] : table;
-        const safeTable = `"${schema}"."${tableName}"`;
+        const safeTable = `"${escapeIdent(schema)}"."${escapeIdent(tableName)}"`;
+
+        if (!isValidIdentifier(schema) || !isValidIdentifier(tableName)) {
+            return NextResponse.json({ error: 'VALIDATION_ERROR', message: 'Invalid table identifier' }, { status: 400 });
+        }
 
         const { rows: countResult } = await client.query(`SELECT COUNT(*) AS total FROM ${safeTable}`);
         const total = Number(countResult[0]?.total ?? 0);
@@ -129,4 +133,12 @@ async function previewS3(
         rows: parsed.data,
         preview_rows: parsed.data.length,
     });
+}
+
+function escapeIdent(s: string): string {
+    return s.replace(/"/g, '""');
+}
+
+function isValidIdentifier(s: string): boolean {
+    return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(s);
 }
