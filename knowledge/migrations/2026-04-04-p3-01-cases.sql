@@ -79,8 +79,7 @@ DROP POLICY IF EXISTS "Org members access cases" ON cases;
 CREATE POLICY "Org members access cases"
     ON cases FOR ALL
     USING (
-        organization_id IS NULL
-        OR organization_id IN (
+        organization_id IN (
             SELECT organization_id FROM organization_members WHERE user_id = auth.uid()
         )
     );
@@ -90,8 +89,7 @@ CREATE POLICY "Org members access case events"
     ON case_events FOR ALL
     USING (
         case_id IN (SELECT id FROM cases WHERE
-            organization_id IS NULL
-            OR organization_id IN (
+            organization_id IN (
                 SELECT organization_id FROM organization_members WHERE user_id = auth.uid()
             )
         )
