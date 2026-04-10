@@ -85,11 +85,14 @@ export async function getMapping(
     request: NextRequest,
     mappingId: string,
 ): Promise<MappingData | null> {
-    const cached = mappingStore.get(mappingId);
-    if (cached) return cached;
-
+    // Always verify against the durable store first to enforce RLS/auth scoping.
+    // The in-memory cache is process-global and not user/org-scoped.
     const ctx = await getSupabaseContext(request);
-    if (!ctx) return null;
+    if (!ctx) {
+        // No auth context — allow in-memory fallback only in dev/demo mode
+        const cached = mappingStore.get(mappingId);
+        return cached ?? null;
+    }
 
     const { data, error } = await ctx.supabase
         .from(MAPPINGS_TABLE)
