@@ -238,6 +238,7 @@ export async function POST(request: NextRequest) {
                 batches.push(violationRows.slice(i, i + batchSize));
             }
 
+            let batchInsertFailed = false;
             const concurrencyLimit = 5;
             for (let i = 0; i < batches.length; i += concurrencyLimit) {
                 const chunk = batches.slice(i, i + concurrencyLimit);
@@ -246,9 +247,24 @@ export async function POST(request: NextRequest) {
                         const { error } = await supabase.from('violations').insert(batch);
                         if (error) {
                             console.error('[scan/run] violation batch insert error:', error);
+                            batchInsertFailed = true;
                         }
                     })
                 );
+            }
+
+            if (batchInsertFailed) {
+                await supabase.from('scans').update({
+                    status: 'failed',
+                    completed_at: new Date().toISOString(),
+                }).eq('id', scanId);
+
+                return NextResponse.json({
+                    scan_id: scanId,
+                    status: 'failed',
+                    error: 'PARTIAL_INSERT',
+                    message: 'Some violation batches failed to persist. Scan marked as failed.',
+                }, { status: 500 });
             }
         }
 
