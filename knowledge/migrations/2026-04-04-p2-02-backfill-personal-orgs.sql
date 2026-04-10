@@ -35,17 +35,20 @@ WHERE o.name = 'Personal'
   );
 
 -- Step 3: Backfill organization_id on business tables
+-- Uses the exact personal org (matched by created_by + 'Personal' name) rather
+-- than picking an arbitrary owner membership, which could mis-assign data when
+-- a user belongs to multiple orgs.
 UPDATE policies p
 SET organization_id = (
-    SELECT om.organization_id FROM organization_members om
-    WHERE om.user_id = p.user_id AND om.role = 'owner' LIMIT 1
+    SELECT o.id FROM organizations o
+    WHERE o.created_by = p.user_id AND o.name = 'Personal' LIMIT 1
 )
 WHERE p.organization_id IS NULL;
 
 UPDATE scans s
 SET organization_id = (
-    SELECT om.organization_id FROM organization_members om
-    WHERE om.user_id = s.user_id AND om.role = 'owner' LIMIT 1
+    SELECT o.id FROM organizations o
+    WHERE o.created_by = s.user_id AND o.name = 'Personal' LIMIT 1
 )
 WHERE s.organization_id IS NULL;
 
@@ -58,15 +61,15 @@ WHERE v.scan_id = s.id
 
 UPDATE uploaded_datasets ud
 SET organization_id = (
-    SELECT om.organization_id FROM organization_members om
-    WHERE om.user_id = ud.user_id AND om.role = 'owner' LIMIT 1
+    SELECT o.id FROM organizations o
+    WHERE o.created_by = ud.user_id AND o.name = 'Personal' LIMIT 1
 )
 WHERE ud.organization_id IS NULL;
 
 UPDATE mapping_configs mc
 SET organization_id = (
-    SELECT om.organization_id FROM organization_members om
-    WHERE om.user_id = mc.user_id AND om.role = 'owner' LIMIT 1
+    SELECT o.id FROM organizations o
+    WHERE o.created_by = mc.user_id AND o.name = 'Personal' LIMIT 1
 )
 WHERE mc.organization_id IS NULL;
 
