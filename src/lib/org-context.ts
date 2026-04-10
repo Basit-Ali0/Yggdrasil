@@ -69,9 +69,10 @@ export async function resolveOrgContext(request: NextRequest): Promise<OrgContex
 }
 
 /**
- * Pre-migration fallback: when organizations table doesn't exist yet or user has
- * no membership, return a synthetic context so existing APIs keep working.
+ * Pre-migration fallback: when the organizations table doesn't exist yet,
+ * return a synthetic context so existing APIs keep working.
  * The organizationId is empty — callers should treat this as "no org scoping".
+ * Role is set to 'member' (not 'owner') so requireAdmin() rejects by default.
  */
 function fallbackToUserOnly(
     supabase: Awaited<ReturnType<typeof getSupabaseForRequest>>,
@@ -80,7 +81,7 @@ function fallbackToUserOnly(
     return {
         userId,
         organizationId: '',
-        role: 'owner',
+        role: 'member',
         supabase,
     };
 }
