@@ -53,6 +53,10 @@ Strict Requirements:
 3. If a rule is ambiguous, set requires_clarification: true with clarification_notes.
 4. List any ambiguous sections in the ambiguous_sections array.`;
 
+        const ctx = await resolveOrgContext(request);
+        const { supabase, userId } = ctx;
+        const org = orgFilter(ctx);
+
         console.log(`[generate-rules] Generating rules from ${text.length} chars of text`);
 
         const result = await geminiGenerateObject({
@@ -60,10 +64,6 @@ Strict Requirements:
             system: systemPrompt,
             prompt: `Extract compliance rules from the following policy document:\n\n${text.slice(0, 500000)}`,
         });
-
-        const ctx = await resolveOrgContext(request);
-        const { supabase, userId } = ctx;
-        const org = orgFilter(ctx);
 
         // Create policy
         const policyId = uuid();
@@ -106,6 +106,10 @@ Strict Requirements:
             const { error: rulesError } = await insertPolicyRuleRows(supabase, ruleRows);
             if (rulesError) {
                 console.error('Rules insert error:', rulesError);
+                return NextResponse.json(
+                    { error: 'INTERNAL_ERROR', message: 'Policy created but rules failed to persist' },
+                    { status: 500 }
+                );
             }
         }
 

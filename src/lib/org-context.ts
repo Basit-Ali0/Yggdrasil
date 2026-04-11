@@ -56,7 +56,7 @@ export async function resolveOrgContext(request: NextRequest): Promise<OrgContex
         if (requestedOrgId) {
             throw new AuthError('Not a member of the requested organization');
         }
-        return fallbackToUserOnly(supabase, userId);
+        throw new AuthError('User has no organization membership. Please complete onboarding.');
     }
 
     const membership = memberships[0];

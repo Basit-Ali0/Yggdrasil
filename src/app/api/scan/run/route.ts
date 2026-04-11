@@ -23,6 +23,9 @@ import { logStructured } from '@/lib/structured-log';
 import { generateCases, isAmlPolicyType, type ViolationForCase } from '@/lib/case-generation';
 
 export async function POST(request: NextRequest) {
+    let scanId: string | undefined;
+    let supabaseRef: Awaited<ReturnType<typeof resolveOrgContext>>['supabase'] | undefined;
+
     try {
         const body = await request.json();
         const parsed = RunScanSchema.safeParse(body);
@@ -37,6 +40,7 @@ export async function POST(request: NextRequest) {
         const { audit_id, policy_id, upload_id, mapping_id, audit_name } = parsed.data;
         const ctx = await resolveOrgContext(request);
         const { supabase, userId } = ctx;
+        supabaseRef = supabase;
         const org = orgFilter(ctx);
 
         const mapping = await getMapping(request, mapping_id);
@@ -141,7 +145,7 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        const scanId = uuid();
+        scanId = uuid();
         const scanRecord: Record<string, unknown> = {
             id: scanId,
             user_id: userId,
@@ -411,6 +415,17 @@ export async function POST(request: NextRequest) {
             );
         }
         console.error('POST /api/scan/run error:', err);
+
+        if (scanId && supabaseRef) {
+            await supabaseRef.from('scans').update({
+                status: 'failed',
+                completed_at: new Date().toISOString(),
+            }).eq('id', scanId).then(
+                () => {},
+                (e: unknown) => console.error('[scan/run] failed to persist terminal state:', e)
+            );
+        }
+
         return NextResponse.json(
             { error: 'INTERNAL_ERROR', message: 'An unexpected error occurred', status: 'failed' },
             { status: 500 }

@@ -176,9 +176,14 @@ export async function POST(request: NextRequest) {
             .insert(auditRow);
 
         if (auditError) {
-            // Fallback: audits table may not exist yet (pre-migration)
-            if (auditError.code !== '42P01' && !auditError.message?.includes('does not exist')) {
+            if (auditError.code === '42P01' || auditError.message?.includes('does not exist')) {
+                console.warn('Audit table not yet migrated — skipping insert');
+            } else {
                 console.error('Audit insert error:', auditError);
+                return NextResponse.json(
+                    { error: 'INTERNAL_ERROR', message: 'Failed to create audit record' },
+                    { status: 500 }
+                );
             }
         }
 

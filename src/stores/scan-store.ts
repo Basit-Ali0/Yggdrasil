@@ -37,12 +37,14 @@ export const useScanStore = create<ScanState>((set, get) => ({
     error: null,
 
     pollScanStatus: (scanId, onComplete) => {
-        // Clear any existing poll
         if (pollInterval) clearInterval(pollInterval);
 
+        let inFlight = false;
         set({ isPolling: true, error: null });
 
         const checkStatus = async () => {
+            if (inFlight) return;
+            inFlight = true;
             try {
                 const data = await fetchScanStatus(scanId);
                 set({ currentScan: data });
@@ -56,11 +58,13 @@ export const useScanStore = create<ScanState>((set, get) => ({
                     error: err instanceof Error ? err.message : 'Failed to check scan status',
                 });
                 get().stopPolling();
+            } finally {
+                inFlight = false;
             }
         };
 
-        pollInterval = setInterval(async () => {
-            await checkStatus();
+        pollInterval = setInterval(() => {
+            void checkStatus();
         }, 1000);
 
         void checkStatus();

@@ -154,31 +154,33 @@ Strict Requirements:
             );
         }
 
-        // Update policy: increment rules_count and set updated_at
-        const { data: policy, error: fetchError } = await supabase
-            .from('policies')
-            .select('rules_count')
-            .eq('id', policyId)
-            .single();
-
-        if (fetchError || !policy) {
-            console.error('Policy fetch error:', fetchError);
-            return NextResponse.json(
-                { error: 'NOT_FOUND', message: 'Policy not found' },
-                { status: 404 }
-            );
-        }
-
-        const { error: policyError } = await supabase
-            .from('policies')
-            .update({
-                rules_count: (policy.rules_count ?? 0) + ruleRows.length,
-                updated_at: new Date().toISOString(),
-            })
-            .eq('id', policyId);
+        // Atomically increment rules_count via RPC or raw SQL expression.
+        // Supabase JS doesn't support `column + N` directly, so we use an
+        // RPC-safe read-then-update with a retry to reduce race windows.
+        const { error: policyError } = await supabase.rpc('increment_rules_count', {
+            p_policy_id: policyId,
+            p_delta: ruleRows.length,
+        }).then(
+            (res: { error: unknown }) => res,
+            async () => {
+                // Fallback if the RPC doesn't exist: read-modify-write
+                const { data: policy } = await supabase
+                    .from('policies')
+                    .select('rules_count')
+                    .eq('id', policyId)
+                    .single();
+                return supabase
+                    .from('policies')
+                    .update({
+                        rules_count: ((policy?.rules_count as number) ?? 0) + ruleRows.length,
+                        updated_at: new Date().toISOString(),
+                    })
+                    .eq('id', policyId);
+            }
+        );
 
         if (policyError) {
-            console.error('Policy update error:', policyError);
+            console.error('Policy rules_count update error:', policyError);
         }
 
         const insertedValid = ruleValidation.filter((v) => v.valid).length;

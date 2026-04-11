@@ -105,34 +105,48 @@ async function previewS3(
     key: string,
     limit: number
 ) {
-    const { S3Client, GetObjectCommand } = await import('@aws-sdk/client-s3');
-    const Papa = (await import('papaparse')).default;
+    try {
+        const { S3Client, GetObjectCommand } = await import('@aws-sdk/client-s3');
+        const Papa = (await import('papaparse')).default;
 
-    const s3 = new S3Client({
-        region: String(config.region ?? 'us-east-1'),
-        credentials: {
-            accessKeyId: String(credentials.access_key_id ?? ''),
-            secretAccessKey: String(credentials.secret_access_key ?? ''),
-        },
-    });
+        const s3 = new S3Client({
+            region: String(config.region ?? 'us-east-1'),
+            credentials: {
+                accessKeyId: String(credentials.access_key_id ?? ''),
+                secretAccessKey: String(credentials.secret_access_key ?? ''),
+            },
+        });
 
-    const response = await s3.send(new GetObjectCommand({
-        Bucket: String(config.bucket ?? ''),
-        Key: key,
-        Range: 'bytes=0-524288',
-    }));
+        const response = await s3.send(new GetObjectCommand({
+            Bucket: String(config.bucket ?? ''),
+            Key: key,
+            Range: 'bytes=0-524288',
+        }));
 
-    const text = await response.Body?.transformToString('utf-8');
-    if (!text) {
-        return NextResponse.json({ error: 'Empty file' }, { status: 400 });
+        let text = await response.Body?.transformToString('utf-8');
+        if (!text) {
+            return NextResponse.json({ error: 'Empty file' }, { status: 400 });
+        }
+
+        // Drop the last partial line caused by byte-range truncation
+        const lastNewline = text.lastIndexOf('\n');
+        if (lastNewline > 0 && lastNewline < text.length - 1) {
+            text = text.slice(0, lastNewline + 1);
+        }
+
+        const parsed = Papa.parse(text, { header: true, preview: limit });
+        return NextResponse.json({
+            headers: parsed.meta.fields ?? [],
+            rows: parsed.data,
+            preview_rows: parsed.data.length,
+        });
+    } catch (err) {
+        console.error('[connectors/preview] S3 preview error:', err);
+        return NextResponse.json(
+            { error: err instanceof Error ? err.message : 'S3 preview failed' },
+            { status: 500 }
+        );
     }
-
-    const parsed = Papa.parse(text, { header: true, preview: limit });
-    return NextResponse.json({
-        headers: parsed.meta.fields ?? [],
-        rows: parsed.data,
-        preview_rows: parsed.data.length,
-    });
 }
 
 function escapeIdent(s: string): string {

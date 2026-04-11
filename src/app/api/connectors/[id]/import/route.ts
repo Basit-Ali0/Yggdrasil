@@ -58,7 +58,15 @@ export async function POST(
         }
 
         const uploadId = uuid();
-        await saveUpload(request, uploadId, { rows, headers, fileName }, org ?? undefined);
+        try {
+            await saveUpload(request, uploadId, { rows, headers, fileName }, org ?? undefined);
+        } catch (saveErr) {
+            console.error('[connectors/import] saveUpload failed:', saveErr);
+            return NextResponse.json(
+                { error: 'INTERNAL_ERROR', message: 'Failed to persist uploaded data' },
+                { status: 500 }
+            );
+        }
 
         // Link to audit if provided
         if (body.audit_id) {

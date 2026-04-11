@@ -154,9 +154,9 @@ const r6 = evaluateMappingReadiness({
     headers: ['cust_id', 'risk_score'],
     sampleRows: [],
 });
-// Non-normalized field without explicit mapping to a bad column → warning, not blocked
-assert(r6.state !== 'blocked' || r6.invalid_columns.length > 0, 'non-normalized unmapped field is warning not blocked');
-assert(r6.warnings.some((w) => w.includes('risk_score')), 'warns about non-standard field');
+// Custom field not in the normalized schema should produce a warning, not a hard block
+assert(r6.state !== 'blocked' || r6.invalid_columns.length > 0, 'custom field "risk_score" without normalized mapping should warn, not block');
+assert(r6.warnings.some((w) => w.includes('risk_score')), 'should warn that "risk_score" is not in the normalized schema');
 
 console.log(`\n🏁 Results: ${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);

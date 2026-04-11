@@ -624,7 +624,7 @@ export class DuckDbExecutionBackend implements ExecutionBackend {
             const record = parseRecordsFromPayloadList([rec.payload])[0];
             if (!record) continue;
             const gap = Number(rec.step) - Number(rec.prev_step);
-            const daysDormant = Math.round(gap * (scale === 24 ? 1 : 1));
+            const daysDormant = Math.round(gap * (24 / scale));
             violations.push(
                 buildWindowedViolation(rule, account, [record], {
                     actual_value: record.amount,

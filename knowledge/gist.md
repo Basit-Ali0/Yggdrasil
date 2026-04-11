@@ -17,7 +17,7 @@ SOLUTION FLOW
 5. User uploads CSV data
 6. System identifies schema; LLM suggests column mapping (e.g., 'amt' -> 'amount')
 7. User confirms/approves mapping (Transparent Mapping - REQUIRED)
-8. System scans data on the **server** (in-memory or DuckDB backend) with deterministic normalization (sample up to 50k rows per run)
+8. System scans data on the **server** (DuckDB backend) with deterministic normalization (sample up to 50k rows per run)
 9. Violations generated with full explainability
 10. Dashboard displays compliance score
 11. User reviews violations, can override/approve

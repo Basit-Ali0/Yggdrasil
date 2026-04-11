@@ -13,7 +13,7 @@ export async function POST(
     try {
         const { id } = await params;
         const ctx = await resolveOrgContext(request);
-        const { supabase, userId } = ctx;
+        const { supabase, userId, organizationId } = ctx;
         const body = await request.json();
         const { content } = body as { content: string };
 
@@ -36,11 +36,12 @@ export async function POST(
             return NextResponse.json({ error: 'INTERNAL_ERROR', message: error.message }, { status: 500 });
         }
 
-        // Touch case activity
-        await supabase.from('cases').update({
+        let activityQuery = supabase.from('cases').update({
             latest_activity: new Date().toISOString(),
             updated_at: new Date().toISOString(),
         }).eq('id', id);
+        if (organizationId) activityQuery = activityQuery.eq('organization_id', organizationId);
+        await activityQuery;
 
         return NextResponse.json({ success: true, event }, { status: 201 });
     } catch (err) {
