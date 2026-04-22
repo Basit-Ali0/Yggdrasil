@@ -282,7 +282,9 @@ export function EvidenceDrawer({ violationId, open, onOpenChange }: EvidenceDraw
                                                 <div className="space-y-1">
                                                     <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Real-World Breach Example</p>
                                                     <p className="text-xs italic text-muted-foreground">
-                                                        "{v.historical_context.breach_example}"
+                                                        {'\u201c'}
+                                                        {v.historical_context.breach_example}
+                                                        {'\u201d'}
                                                     </p>
                                                 </div>
                                                 <div className="pt-2 border-t text-[10px] text-muted-foreground flex justify-between">

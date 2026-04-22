@@ -3,7 +3,8 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseForRequest, getUserIdFromRequest, AuthError } from '@/lib/supabase';
+import { AuthError } from '@/lib/supabase';
+import { resolveOrgContext, orgFilter } from '@/lib/org-context';
 import { PrebuiltPolicySchema } from '@/lib/validators';
 import { AML_RULES, AML_POLICY_NAME } from '@/lib/policies/aml';
 import { GDPR_RULES, GDPR_POLICY_NAME } from '@/lib/policies/gdpr';
@@ -37,23 +38,24 @@ export async function POST(request: NextRequest) {
         }
 
         const { type } = parsed.data;
-        const userId = await getUserIdFromRequest(request);
-        const supabase = await getSupabaseForRequest(request);
+        const ctx = await resolveOrgContext(request);
+        const { supabase, userId } = ctx;
+        const org = orgFilter(ctx);
 
         const pack = getPolicyPack(type);
         const policyId = uuid();
 
-        const { error: policyError } = await supabase
-            .from('policies')
-            .insert({
-                id: policyId,
-                user_id: userId,
-                name: pack.name,
-                type: 'prebuilt',
-                prebuilt_type: type,
-                rules_count: pack.rules.length,
-                status: 'active',
-            });
+        const policyRow: Record<string, unknown> = {
+            id: policyId,
+            user_id: userId,
+            name: pack.name,
+            type: 'prebuilt',
+            prebuilt_type: type,
+            rules_count: pack.rules.length,
+            status: 'active',
+        };
+        if (org) policyRow.organization_id = org;
+        const { error: policyError } = await supabase.from('policies').insert(policyRow);
 
         if (policyError) {
             return NextResponse.json(

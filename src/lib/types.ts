@@ -21,6 +21,10 @@ export interface RuleCondition {
 
 // Compound conditions supporting recursive AND/OR nesting
 export interface CompoundCondition {
+    field?: string;
+    operator?: string;
+    value?: any;
+    value_type?: 'literal' | 'field';
     AND?: RuleConditions[];
     OR?: RuleConditions[];
 }
@@ -53,6 +57,13 @@ export interface Rule {
         breach_example?: string;
         article_reference?: string;
     };
+    /** Set when rules row includes P1-14 validation columns (extracted policies). */
+    validation_status?: 'valid' | 'invalid' | null;
+    validation_issues?: Array<{
+        category: string;
+        message: string;
+        path?: string;
+    }> | null;
 }
 
 // ── Violation ────────────────────────────────────────────────
@@ -77,6 +88,8 @@ export interface Violation {
     reviewed_by?: string | null;
     created_at?: string;
     record_id?: string;
+    /** Linked AML case ID (P3-12). Null for non-AML violations. */
+    case_id?: string | null;
 }
 
 // ── Remediation (Generate Fix) ───────────────────────────────

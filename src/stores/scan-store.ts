@@ -25,6 +25,10 @@ interface ScanState {
 
 let pollInterval: ReturnType<typeof setInterval> | null = null;
 
+async function fetchScanStatus(scanId: string): Promise<ScanStatusResponse> {
+    return api.get<ScanStatusResponse>(`/scan/${scanId}`);
+}
+
 export const useScanStore = create<ScanState>((set, get) => ({
     currentScan: null,
     scanHistory: [],
@@ -33,14 +37,16 @@ export const useScanStore = create<ScanState>((set, get) => ({
     error: null,
 
     pollScanStatus: (scanId, onComplete) => {
-        // Clear any existing poll
         if (pollInterval) clearInterval(pollInterval);
 
+        let inFlight = false;
         set({ isPolling: true, error: null });
 
-        pollInterval = setInterval(async () => {
+        const checkStatus = async () => {
+            if (inFlight) return;
+            inFlight = true;
             try {
-                const data = await api.get<ScanStatusResponse>(`/scan/${scanId}`);
+                const data = await fetchScanStatus(scanId);
                 set({ currentScan: data });
 
                 if (data.status === 'completed' || data.status === 'failed') {
@@ -52,8 +58,16 @@ export const useScanStore = create<ScanState>((set, get) => ({
                     error: err instanceof Error ? err.message : 'Failed to check scan status',
                 });
                 get().stopPolling();
+            } finally {
+                inFlight = false;
             }
+        };
+
+        pollInterval = setInterval(() => {
+            void checkStatus();
         }, 1000);
+
+        void checkStatus();
     },
 
     stopPolling: () => {

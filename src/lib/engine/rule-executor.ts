@@ -1,194 +1,206 @@
 // ============================================================
-// RuleExecutor — Orchestrates: normalize → pre-filter → execute
+// RuleExecutor — Backend selection first, then normalize or raw-project
+// Deterministic: LLM extracts rules, code enforces them
 // ============================================================
 
 import { Rule, NormalizedRecord, ExecutionConfig } from '../types';
-import { InMemoryBackend, ViolationResult } from './in-memory-backend';
+import type { ViolationResult } from './violation-result';
+import type { ExecutionBackend } from './execution-backend';
+import { InMemoryBackend } from './in-memory-backend';
 import { normalizeRecord } from './schema-adapter';
+import { normalizeRuleForEngine } from './rule-engine-normalize';
+import {
+    chooseExecutionBackend,
+    createExecutionBackend,
+    type ForcedExecutionBackend,
+} from './backend-selection';
+import { logStructured } from '@/lib/structured-log';
 import { validateRuleQuality } from './rule-quality-validator';
-import { DatasetMetadata } from '../upload-store';
+import type { DatasetMetadata } from '../upload-store';
 
-/**
- * Map Gemini-extracted rule IDs/types to engine-recognized IDs/types.
- * Only normalizes rules with unknown/empty types. Prebuilt rules
- * (GDPR, SOC2, AML) already have correct types and must NOT be
- * reclassified by keyword matching.
- */
-function normalizeRuleForEngine(rule: Rule): Rule {
-    // If the rule already has a type recognized by the engine, keep it.
-    // WINDOWED_RULE_TYPES are handled by executeWindowed; everything
-    // else routes to executeSingleTx which checks conditions generically.
-    // Only normalize rules with empty/null type.
-    if (rule.type) {
-        return rule;
-    }
-
-    const id = (rule.rule_id || '').toUpperCase();
-    const desc = (rule.description || '').toLowerCase();
-    const name = (rule.name || '').toLowerCase();
-    const combined = `${id} ${desc} ${name}`;
-
-    // Keyword-based categorization for LLM-extracted rules without a type
-    // Priority: velocity > aggregation > threshold > behavioral
-
-    // 1. Temporal / Velocity Patterns
-    if (combined.includes('velocity') || combined.includes('rapid') || combined.includes('frequency')) {
-        return { ...rule, type: 'velocity' };
-    }
-
-    // 2. Aggregations
-    if (combined.includes('aggregate') || combined.includes('sum') || combined.includes('total')) {
-        return { ...rule, type: 'aggregation' };
-    }
-
-    // 3. Single Transaction Thresholds
-    if (combined.includes('threshold') || combined.includes('limit') || combined.includes('exceed')) {
-        if (!rule.time_window) {
-            return { ...rule, type: 'single_transaction' };
-        }
-    }
-
-    // 4. Behavioral Anomalies
-    if (combined.includes('anomaly') || combined.includes('unusual')) {
-        return { ...rule, type: 'behavioral' };
-    }
-
-    // Default to single_transaction
-    return { ...rule, type: 'single_transaction' };
+async function finalize<T>(value: T | Promise<T>): Promise<T> {
+    return await Promise.resolve(value);
 }
 
-/**
- * ML Scoring Model (L1)
- * Assigns a confidence score to each violation based on rule quality,
- * signal specificity, statistical anomaly detection, and historical precision.
- */
+export type RuleExecutorOptions = {
+    /** Raw row count hint for backend selection (overrides rawRecords.length if set). */
+    rowCount?: number;
+    /** Override env-based backend selection (tests / rollout). */
+    forceBackend?: ForcedExecutionBackend;
+};
+
 function calculateConfidence(
-    violation: ViolationResult, 
-    rule: Rule, 
+    violation: ViolationResult,
+    rule: Rule,
     metadata?: DatasetMetadata
 ): number {
     const quality = validateRuleQuality(rule);
     let score = quality.score / 100;
 
-    // 1. Signal Specificity Boost
-    if (rule.conditions && typeof rule.conditions === 'object') {
-        if ('AND' in rule.conditions && Array.isArray(rule.conditions.AND)) {
-            // More signals = higher confidence
-            score += rule.conditions.AND.length * 0.05;
+    if (rule.conditions && typeof rule.conditions === 'object' && 'AND' in rule.conditions) {
+        const andConditions = rule.conditions.AND;
+        if (Array.isArray(andConditions)) {
+            score += andConditions.length * 0.05;
         }
     }
 
-    // 2. Statistical Anomaly Detection (Simulated ML)
     if (metadata && violation.amount) {
-        const stats = metadata.columnStats['amount'];
-        
+        const stats = metadata.columnStats.amount;
         if (stats && stats.type === 'numeric' && stats.mean) {
-            // How many times larger than mean?
             const ratioToMean = violation.amount / stats.mean;
-            
-            if (ratioToMean > 10) score += 0.2; // Extreme outlier
+            if (ratioToMean > 10) score += 0.2;
             else if (ratioToMean > 5) score += 0.1;
             else if (ratioToMean < 0.1) score += 0.05;
         }
     }
 
-    // 3. Bayesian Historical Precision (Feedback Loop)
-    // Formula: (1 + TP) / (2 + TP + FP)
     const tp = rule.approved_count || 0;
     const fp = rule.false_positive_count || 0;
     const historicalPrecision = (1 + tp) / (2 + tp + fp);
-    
-    // We blend the historical precision with the rule quality score
-    // If we have many reviews (> 5), we weight history more heavily
     const reviewCount = tp + fp;
-    const historyWeight = Math.min(0.7, reviewCount / 20); // Cap history weight at 70%
-    score = (score * (1 - historyWeight)) + (historicalPrecision * historyWeight);
+    const historyWeight = Math.min(0.7, reviewCount / 20);
+    score = score * (1 - historyWeight) + historicalPrecision * historyWeight;
 
-    // 4. Criticality weighting
     if (rule.severity === 'CRITICAL') score += 0.1;
-
     return Math.max(0, Math.min(1, score));
 }
 
 export class RuleExecutor {
-    private backend: InMemoryBackend;
+    private readonly memoryBackend: InMemoryBackend;
+    private readonly options: RuleExecutorOptions;
 
-    constructor() {
-        this.backend = new InMemoryBackend();
+    constructor(options: RuleExecutorOptions = {}) {
+        this.memoryBackend = new InMemoryBackend();
+        this.options = options;
     }
 
     /**
      * Execute all active rules against the dataset.
-     * Returns all violations found, ranked by confidence.
+     *
+     * DuckDB path (when backend = duckdb AND backend.prepareRaw is available):
+     *   - Raw rows are staged directly into DuckDB without Node-side normalization.
+     *   - No 50k sampling cap; full dataset is executed.
+     *   - executionReason reflects "fully executed (N rows)".
+     *
+     * In-memory path:
+     *   - Rows are normalized via normalizeRecord in Node.
+     *   - Applied sampleLimit cap (default 50k).
+     *   - executionReason reflects "sampled M of N rows" when capped.
      */
-    executeAll(
+    async executeAll(
         rules: Rule[],
         rawRecords: Record<string, any>[],
         config: ExecutionConfig,
         metadata?: DatasetMetadata
-    ): {
+    ): Promise<{
         violations: ViolationResult[];
         trueViolationCount: number;
         rulesProcessed: number;
         rulesTotal: number;
-    } {
-        // Step 1: Normalize records using confirmed column mapping
-        const normalized: NormalizedRecord[] = rawRecords.map((r) =>
-            normalizeRecord(r, config.columnMapping)
-        );
-
-        // Step 2: Sample if over limit
-        const sampled =
-            normalized.length > config.sampleLimit
-                ? normalized.slice(0, config.sampleLimit)
-                : normalized;
-
-        // Step 3: Execute each active rule
-        const violations: ViolationResult[] = [];
+        executionBackend: string;
+        executionReason: string;
+        sampled: boolean;
+        effectiveRowCount: number;
+    }> {
         const activeRules = rules.filter((r) => r.is_active);
+
+        // Choose backend from raw row count — before any normalization
+        const choice = chooseExecutionBackend({
+            rowCount: this.options.rowCount ?? rawRecords.length,
+            rules: activeRules,
+            force: this.options.forceBackend,
+        });
+
+        const primary: ExecutionBackend = createExecutionBackend(choice.kind);
+
+        let records: NormalizedRecord[] = [];
+        let sampled = false;
+        let effectiveRowCount = rawRecords.length;
+        let executionReason = choice.reason;
+
+        if (typeof primary.prepareRaw === 'function') {
+            // DuckDB raw path: project inside DuckDB, no Node normalization, no sampling cap
+            await finalize(primary.prepareRaw(rawRecords, config.columnMapping));
+            effectiveRowCount = rawRecords.length;
+            executionReason = `${choice.reason}; fully executed (${rawRecords.length} rows)`;
+        } else {
+            // In-memory path: normalize in Node, then apply sample cap
+            const normalized = rawRecords.map((r) => normalizeRecord(r, config.columnMapping));
+            if (normalized.length > config.sampleLimit) {
+                records = normalized.slice(0, config.sampleLimit);
+                sampled = true;
+                effectiveRowCount = config.sampleLimit;
+                executionReason = `${choice.reason}; sampled ${config.sampleLimit} of ${normalized.length} rows`;
+            } else {
+                records = normalized;
+            }
+            await finalize(primary.prepare?.(records) ?? Promise.resolve());
+        }
+
+        logStructured('RuleExecutor', 'backend_selected', {
+            backend: primary.name,
+            reason: executionReason,
+            raw_row_count: rawRecords.length,
+            effective_row_count: effectiveRowCount,
+            active_rules: activeRules.length,
+            sampled,
+        });
+
+        const violations: ViolationResult[] = [];
         let rulesProcessed = 0;
         let trueViolationCount = 0;
 
-        console.log(`[EXECUTOR] Starting scan with ${activeRules.length} active rules against ${sampled.length} rows`);
-
-        for (const rule of activeRules) {
-            console.log(`[EXECUTOR] Running rule: ${rule.rule_id} (${rule.name})`);
-            const engineRule = normalizeRuleForEngine(rule);
-            const ruleViolations = this.backend.execute(
-                engineRule,
-                sampled,
-                config.temporalScale
-            );
-
-            // Track the true violation count before capping (for accurate scoring)
-            trueViolationCount += ruleViolations.length;
-
-            // NOISE GATE: Cap stored violations per rule to prevent system overload
-            const VIOLATION_CAP = 1000;
-            let finalRuleViolations = ruleViolations;
-
-            if (ruleViolations.length > VIOLATION_CAP) {
-                console.warn(`[EXECUTOR] Rule ${rule.rule_id} is too noisy (${ruleViolations.length} hits). Storing top ${VIOLATION_CAP}.`);
-                finalRuleViolations = ruleViolations.slice(0, VIOLATION_CAP);
+        // Lazy normalized fallback for the rare case DuckDB can't handle a rule type
+        let lazyNormalized: NormalizedRecord[] | null = null;
+        const getFallbackRecords = (): NormalizedRecord[] => {
+            if (!lazyNormalized) {
+                lazyNormalized = rawRecords
+                    .slice(0, config.sampleLimit)
+                    .map((r) => normalizeRecord(r, config.columnMapping));
             }
+            return lazyNormalized;
+        };
 
-            console.log(`[EXECUTOR] Rule ${rule.rule_id} found ${ruleViolations.length} violations (stored ${finalRuleViolations.length})`);
+        try {
+            for (const rule of activeRules) {
+                const engineRule = normalizeRuleForEngine(rule);
+                const usesPrimary = primary.supportsRule(engineRule);
+                const backend: ExecutionBackend = usesPrimary ? primary : this.memoryBackend;
 
-            // Step 4: Scoring Layer (ML-Inspired)
-            const scoredViolations = finalRuleViolations.map(v => ({
-                ...v,
-                confidence: calculateConfidence(v, rule, metadata)
-            }));
+                // Determine records for this backend invocation
+                let backendRecords: NormalizedRecord[];
+                if (usesPrimary && typeof primary.prepareRaw === 'function') {
+                    // DuckDB: ignores the records argument (queries its staged table)
+                    backendRecords = [];
+                } else if (!usesPrimary) {
+                    // In-memory fallback from DuckDB path
+                    backendRecords = getFallbackRecords();
+                } else {
+                    // Normal in-memory path
+                    backendRecords = records;
+                }
 
-            violations.push(...scoredViolations);
-            rulesProcessed++;
+                const batch = await finalize(
+                    backend.execute(engineRule, backendRecords, config.temporalScale)
+                );
+                trueViolationCount += batch.length;
+
+                const violationCap = 1000;
+                const finalBatch = batch.length > violationCap ? batch.slice(0, violationCap) : batch;
+                const scoredBatch = finalBatch.map((violation) => ({
+                    ...violation,
+                    confidence: calculateConfidence(violation, rule, metadata),
+                }));
+
+                violations.push(...scoredBatch);
+                rulesProcessed++;
+            }
+        } finally {
+            await finalize(primary.dispose?.() ?? Promise.resolve());
         }
 
-        console.log(`[EXECUTOR] Scan complete. Total violations: ${trueViolationCount} (stored: ${violations.length})`);
-
-        // Step 5: Rank by confidence
-        const rankedViolations = violations.sort((a, b) =>
-            (b.confidence || 0) - (a.confidence || 0)
+        const rankedViolations = [...violations].sort(
+            (a, b) => (b.confidence || 0) - (a.confidence || 0)
         );
 
         return {
@@ -196,6 +208,10 @@ export class RuleExecutor {
             trueViolationCount,
             rulesProcessed,
             rulesTotal: activeRules.length,
+            executionBackend: primary.name,
+            executionReason,
+            sampled,
+            effectiveRowCount,
         };
     }
 }

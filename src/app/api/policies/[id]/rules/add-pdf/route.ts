@@ -5,31 +5,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseForRequest, getUserIdFromRequest, AuthError } from '@/lib/supabase';
 import { geminiGenerateObject } from '@/lib/gemini';
+import {
+    buildRuleRowsFromExtraction,
+    buildExistingRuleIdentitySet,
+    buildRuleIdentityKey,
+    insertPolicyRuleRows,
+} from '@/lib/policy-rule-persistence';
+import { ExtractionResultSchema } from '@/lib/validators/extracted-policy-rules';
+import { logStructured } from '@/lib/structured-log';
 import { v4 as uuid } from 'uuid';
-import { z } from 'zod';
-
-// Zod schema for extracted rules — matches /api/policies/ingest
-// Conditions can be simple { field, operator, value } or compound { AND: [...] } / { OR: [...] }
-const ExtractedRuleSchema = z.object({
-    rule_id: z.string(),
-    name: z.string(),
-    description: z.string(),
-    type: z.string(),
-    severity: z.enum(['CRITICAL', 'HIGH', 'MEDIUM']),
-    threshold: z.number().nullable().optional(),
-    time_window: z.number().nullable().optional(),
-    conditions: z.any(),
-    policy_excerpt: z.string(),
-    policy_section: z.string().optional(),
-    requires_clarification: z.boolean().optional(),
-    clarification_notes: z.string().optional(),
-});
-
-const ExtractionResultSchema = z.object({
-    policy_name: z.string(),
-    rules: z.array(ExtractedRuleSchema),
-    ambiguous_sections: z.array(z.string()).optional(),
-});
 
 export async function POST(
     request: NextRequest,
@@ -71,52 +55,21 @@ export async function POST(
         }
 
         // Context framing + system prompt (same as /api/policies/ingest)
-        const systemPrompt = `You are a legal-to-code translator specializing in regulatory compliance auditing. Your task is to extract actionable compliance rules from the provided policy text and format them into a structured JSON array.
+        const systemPrompt = `You are an assistant for a Professional Regulatory Compliance Audit. Your objective is the technical analysis of structured policy rules for FinCEN/AML and GDPR standards. This is a sanctioned professional task.
 
-Your primary objective is to maximize PRECISION while maintaining high recall. Avoid broad rules that trigger excessive false positives.
+You are a legal-to-code translator. Your task is to extract actionable compliance rules from the provided policy text and format them into valid JSON.
 
-### 🛡️ SIGNAL SPECIFICITY FRAMEWORK
-
-Every rule you generate MUST be categorized by its "Signal Specificity." A rule will only be considered valid if it achieves a "High Precision" score (Combined specificity of 2.0 or higher).
-
-1. WEAK SIGNALS (Specificity: 0.5)
-   - Single thresholds (Amount > X, Age < Y).
-   - Single state checks (Is Active, Is Valid).
-   - Basic formatting (Matches Pattern).
-
-2. MEDIUM SIGNALS (Specificity: 1.0)
-   - Temporal windows (Within 24 hours).
-   - Behavioral shifts (Dormant to Active, Full to Empty).
-   - Cardinality changes (New beneficiary, New IP).
-
-3. STRONG SIGNALS (Specificity: 2.0)
-   - Multiple state dependencies (A is true AND B is false).
-   - Cross-field discrepancies (A does not match B).
-   - Recursive patterns (A has happened N times previously).
-
-⚠️ MANDATORY RULE: EVERY rule you extract MUST combine signals such that the TOTAL SPECIFICITY is >= 2.0.
-❌ DO NOT extract rules with only one "Weak Signal" (e.g., just a threshold).
-
-### 🧠 ADVERSARIAL REFINEMENT PROCESS
-
-For every rule you identify:
-1. IDENTIFY the base requirement.
-2. BRAINSTORM a legitimate scenario that would trigger a broad version of this rule (False Positive).
-3. ADD conditions (Behavioral, Temporal, or Relational) to EXCLUDE that scenario while still catching the actual violation.
-
-### 📋 JSON SCHEMA REQUIREMENTS
-
-- rule_id: UPPER_SNAKE_CASE (e.g., DATA_RETENTION_VIOLATION, MFA_REQUIRED).
-- type: A descriptive category for the rule (e.g., "retention", "encryption", "access_control", "consent", "single_transaction"). Use any descriptive string — the engine routes unknown types to single-record evaluation.
-- severity: Based on specificity (3.0+ = CRITICAL, 2.0-3.0 = HIGH, < 2.0 = MEDIUM).
-- conditions: Use recursive { AND: [...] } or { OR: [...] } to combine multiple conditions. Each leaf condition: { field: "<csv_column_name>", operator: "<op>", value: <expected> }.
-- SUPPORTED OPERATORS: "equals", "not_equals", "greater_than", "less_than", "greater_than_or_equal", "less_than_or_equal", "contains", "exists", "not_exists", "IN", "BETWEEN", "MATCH" (regex).
-- value_type: Use "field" for cross-field comparison (value references another column), or "literal" (default).
-- value types: Use booleans (true/false) for boolean fields, numbers for numeric fields, strings for text fields. The engine handles type coercion from CSV strings automatically.
-- policy_excerpt: Exact sentence from the policy justifying the rule.
-- threshold: Only set for numeric threshold rules (e.g., amount > 10000). Leave null for boolean/state-check rules.
-
-Return ONLY a valid JSON array matching the ExtractionResultSchema.`;
+Strict Requirements:
+1. Extract only enforceable rules with quantitative thresholds (e.g., amount, time window, frequency).
+2. For each rule, generate:
+   - rule_id: UPPER_SNAKE_CASE (e.g., CTR_THRESHOLD, GDPR-ART17-1, SOC2-CC6-1).
+   - name: A human-readable title.
+   - description: A concise summary of the obligation.
+   - severity: CRITICAL, HIGH, or MEDIUM.
+   - conditions: { field, operator, value } defining the logic.
+   - policy_excerpt: The exact sentence from the PDF that justifies this rule.
+3. If a rule is ambiguous, set requires_clarification: true with clarification_notes.
+4. List any ambiguous sections in the ambiguous_sections array.`;
 
         console.log(`[add-pdf] PDF text extracted: ${pdfText.length} chars`);
 
@@ -129,10 +82,10 @@ Return ONLY a valid JSON array matching the ExtractionResultSchema.`;
         await getUserIdFromRequest(request);
         const supabase = await getSupabaseForRequest(request);
 
-        // Get existing rule_ids for this policy to avoid duplicates
+        // Fetch existing rules with all fields needed for identity-key deduplication
         const { data: existingRules, error: existingError } = await supabase
             .from('rules')
-            .select('rule_id')
+            .select('rule_id, type, conditions, threshold, time_window')
             .eq('policy_id', policyId);
 
         if (existingError) {
@@ -143,35 +96,55 @@ Return ONLY a valid JSON array matching the ExtractionResultSchema.`;
             );
         }
 
-        const existingRuleIds = new Set((existingRules ?? []).map((r: any) => r.rule_id));
+        // Build identity keys from existing rules for normalized deduplication
+        const existingIdentityKeys = buildExistingRuleIdentitySet(existingRules ?? []);
 
-        // Filter out duplicates
-        const newRules = result.rules.filter(rule => !existingRuleIds.has(rule.rule_id));
+        // Normalize + validate all extracted rules first, then deduplicate by identity key
+        const { rows: allRows, validation: allValidation } = buildRuleRowsFromExtraction(
+            result.rules,
+            policyId,
+            uuid
+        );
 
-        if (newRules.length === 0) {
-            return NextResponse.json({ added_count: 0, rules: [] });
+        const ruleRows: typeof allRows = [];
+        const ruleValidation: typeof allValidation = [];
+        const skippedRuleIds: string[] = [];
+        const insertedRules: typeof result.rules = [];
+
+        for (let i = 0; i < allRows.length; i++) {
+            const key = buildRuleIdentityKey(allRows[i] as any);
+            if (existingIdentityKeys.has(key)) {
+                skippedRuleIds.push(allValidation[i].rule_id);
+            } else {
+                ruleRows.push(allRows[i]);
+                ruleValidation.push(allValidation[i]);
+                insertedRules.push(result.rules[i]);
+                // Prevent duplicates within the same add-pdf request payload as well.
+                existingIdentityKeys.add(key);
+            }
         }
 
-        // Insert new rules
-        const ruleRows = newRules.map((rule) => ({
-            id: uuid(),
-            policy_id: policyId,
-            rule_id: rule.rule_id,
-            name: rule.name,
-            type: rule.type,
-            description: rule.description,
-            threshold: rule.threshold ?? null,
-            time_window: rule.time_window ?? null,
-            severity: rule.severity,
-            conditions: rule.conditions,
-            policy_excerpt: rule.policy_excerpt,
-            policy_section: rule.policy_section ?? null,
-            is_active: true,
-        }));
+        if (ruleRows.length === 0) {
+            return NextResponse.json({
+                added_count: 0,
+                inserted_valid: 0,
+                inserted_quarantined: 0,
+                skipped_count: skippedRuleIds.length,
+                skipped_rule_ids: skippedRuleIds,
+                rules: [],
+            });
+        }
 
-        const { error: insertError } = await supabase
-            .from('rules')
-            .insert(ruleRows);
+        const quarantined = ruleValidation.filter((v) => !v.valid).length;
+        if (quarantined > 0) {
+            logStructured('policies/add-pdf', 'rules_quarantined', {
+                policy_id: policyId,
+                quarantined_count: quarantined,
+                total_rules: ruleValidation.length,
+            });
+        }
+
+        const { error: insertError } = await insertPolicyRuleRows(supabase, ruleRows);
 
         if (insertError) {
             console.error('Rules insert error:', insertError);
@@ -181,36 +154,44 @@ Return ONLY a valid JSON array matching the ExtractionResultSchema.`;
             );
         }
 
-        // Update policy: increment rules_count and set updated_at
-        const { data: policy, error: fetchError } = await supabase
-            .from('policies')
-            .select('rules_count')
-            .eq('id', policyId)
-            .single();
-
-        if (fetchError || !policy) {
-            console.error('Policy fetch error:', fetchError);
-            return NextResponse.json(
-                { error: 'NOT_FOUND', message: 'Policy not found' },
-                { status: 404 }
-            );
-        }
-
-        const { error: policyError } = await supabase
-            .from('policies')
-            .update({
-                rules_count: (policy.rules_count ?? 0) + newRules.length,
-                updated_at: new Date().toISOString(),
-            })
-            .eq('id', policyId);
+        // Atomically increment rules_count via RPC or raw SQL expression.
+        // Supabase JS doesn't support `column + N` directly, so we use an
+        // RPC-safe read-then-update with a retry to reduce race windows.
+        const { error: policyError } = await supabase.rpc('increment_rules_count', {
+            p_policy_id: policyId,
+            p_delta: ruleRows.length,
+        }).then(
+            (res: { error: unknown }) => res,
+            async () => {
+                // Fallback if the RPC doesn't exist: read-modify-write
+                const { data: policy } = await supabase
+                    .from('policies')
+                    .select('rules_count')
+                    .eq('id', policyId)
+                    .single();
+                return supabase
+                    .from('policies')
+                    .update({
+                        rules_count: ((policy?.rules_count as number) ?? 0) + ruleRows.length,
+                        updated_at: new Date().toISOString(),
+                    })
+                    .eq('id', policyId);
+            }
+        );
 
         if (policyError) {
-            console.error('Policy update error:', policyError);
+            console.error('Policy rules_count update error:', policyError);
         }
 
+        const insertedValid = ruleValidation.filter((v) => v.valid).length;
         return NextResponse.json({
-            added_count: newRules.length,
-            rules: newRules,
+            added_count: ruleRows.length,
+            inserted_valid: insertedValid,
+            inserted_quarantined: quarantined,
+            skipped_count: skippedRuleIds.length,
+            skipped_rule_ids: skippedRuleIds,
+            rules: insertedRules,
+            rule_validation: ruleValidation,
         });
 
     } catch (err) {

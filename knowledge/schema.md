@@ -68,10 +68,14 @@ Extracted rules from policies.
 | policy_excerpt | TEXT | NULL | Original policy text |
 | policy_section | TEXT | NULL | Policy section reference |
 | is_active | BOOLEAN | DEFAULT TRUE | Whether rule is active |
+| validation_status | TEXT | NULL | `valid` / `invalid` (engine quarantine); NULL for legacy rows |
+| validation_issues | JSONB | NULL | Array of `{ category, message, path? }` when invalid |
 | created_at | TIMESTAMPTZ | DEFAULT NOW() | Creation timestamp |
 
 **Indexes:**
 - `idx_rules_policy` ON (policy_id)
+
+**Migration:** `knowledge/migrations/2026-04-03-rules-validation-metadata.sql`
 
 ---
 

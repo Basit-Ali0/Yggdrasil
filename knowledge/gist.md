@@ -17,12 +17,12 @@ SOLUTION FLOW
 5. User uploads CSV data
 6. System identifies schema; LLM suggests column mapping (e.g., 'amt' -> 'amount')
 7. User confirms/approves mapping (Transparent Mapping - REQUIRED)
-8. System scans data against rules (Deterministic Normalization)
+8. System scans data on the **server** (DuckDB backend) with deterministic normalization (sample up to 50k rows per run)
 9. Violations generated with full explainability
 10. Dashboard displays compliance score
 11. User reviews violations, can override/approve
-12. Export reports, share with team
-13. Manual rescan with diff detection (no redundant scans)
+12. Export reports (including print-to-PDF style flows where supported)
+13. Rescan: call **POST /api/scan/run** again (or **POST /api/scan/rescan**, same handler) with the same audit/upload/mapping when data is still cached; re-upload if the cache expired. Fine-grained **violation diff** vs a prior scan is not implemented in the API yet.
 
 KEY CAPABILITIES
 - PDF-to-Rules: Converts free-text policies into structured compliance rules
@@ -31,8 +31,8 @@ KEY CAPABILITIES
 - Guest/Demo Mode: One-click bypass for hackathon judging (Hardcoded Session)
 - Deterministic Normalization: Logic scales IBM (Days) vs PaySim (Hours) to 1-hour units
 - Human in the Loop: Override false positives, approve violations, track decisions
-- Manual Rescan with Diff: Intelligent detection to avoid redundant scans
-- Delta Display: Shows new, resolved, and unchanged violations between scans
+- Rescan: Dashboard flow re-runs scan when upload payload is still available (`GET /api/data/check/:uploadId`); otherwise user re-uploads and confirms mapping
+- History / trends: Scan history and compliance charts where implemented; **pairwise violation diff** (new vs resolved vs unchanged) is future work
 - Compliance Trends: Visual chart showing score over last 10 scans
 - Audit-Ready Export: Generate structured compliance reports, PDFs, shareable links
 - Smart Heuristics: Auto-detect column types (email, phone, etc.), generate SQL for checks
@@ -114,7 +114,7 @@ FRAUD_INDICATOR      |   ❌    |   ✅   | P0
 HIGH_VALUE_TRANSFER  |   ✅    |   ✅   | P0
 
 TECH STACK
-- Frontend + Backend: Next.js 14 (App Router)
+- Frontend + Backend: Next.js 15 (App Router)
 - Database + Auth: Supabase (PostgreSQL + RLS) - Auth REQUIRED
 - AI: Gemini API with Vercel AI SDK + Zod for structured output
 - PDF Parsing: unjs/unpdf (serverless-compatible)
@@ -126,11 +126,12 @@ TECH STACK
 - Deployment: Vercel (auto-deploy from GitHub)
 
 EXECUTION ARCHITECTURE
-- RuleExecutor: Abstraction layer for rule execution
-- ExecutionBackend: Interface with WebWorkerBackend (default for 50k samples)
-- Data Persistence: Supabase (Metadata/Violations) + IndexedDB (Local CSV Samples)
-- Deterministic: LLM extracts rules, client-side Web Worker enforces (Bypasses Vercel timeouts)
-- Future-proof: Swap execution backend without changing rule definitions
+- **RuleExecutor** (`src/lib/engine/rule-executor.ts`): normalizes rules/records, samples rows, runs each active rule.
+- **ExecutionBackend** (`InMemoryBackend` default; **DuckDbExecutionBackend** when `YGG_EXECUTION_BACKEND=duckdb` or row count exceeds `YGG_DUCKDB_ROW_THRESHOLD`): single interface for parity-tested execution.
+- **Scan API**: `POST /api/scan/run` loads upload + mapping (stores), loads active rules from Supabase, filters to **executable** rules (`validateRuleForExecution`), executes, persists violations and scan row.
+- **Data**: Upload/mapping bodies are durable or cached per deployment (see `knowledge/migrations/`); not IndexedDB-backed in the current server path.
+- **Limits**: Scans use a **50k row sample** cap per run for latency; full-table streaming into DuckDB is future work.
+- **Logging**: JSON lines via `logStructured` for scan completion, mapping readiness, backend selection, and quarantined extracted rules.
 
 ACCELERATION PACKAGES
 - zod: Schema validation for API inputs/outputs
@@ -138,28 +139,30 @@ ACCELERATION PACKAGES
 - @google/generative-ai: Official Google GenAI SDK
 - unjs/unpdf: Serverless PDF parsing (replaces pdf-parse)
 
-API ENDPOINTS
-- POST /api/policies/ingest - Upload PDF, extract rules
-- POST /api/policies/prebuilt - Load prebuilt policy (aml/gdpr/soc2)
-- POST /api/audits - Create a new named audit session
-- GET /api/policies/:id - Get policy with rules
-- POST /api/policies/:id/clarify - Get clarification questions
-- POST /api/policies/:id/clarify/:questionId/answer - Submit clarification answer
-- POST /api/policies/prebuilt - Get pre-built policies (GDPR, SOC2)
-- POST /api/data/upload - Upload CSV/JSON
-- POST /api/data/airtable - Connect to Airtable
-- GET /api/schema - Get database schema
-- POST /api/scan/run - Run compliance scan
-- POST /api/scan/rescan - Rescan with diff detection
-- POST /api/validate - Compute accuracy against ground truth labels
-- GET /api/violations/cases - Get violations grouped by account
-- POST /api/data/mapping/confirm - Confirm column mapping before scan
-- GET /api/scan/history - Get scan history
-- GET /api/violations - List violations
-- PATCH /api/violations/:id - Review violation (update status)
-- POST /api/rules/:ruleId/question - Personalized Q&A
-- GET /api/compliance/score - Get compliance score
-- GET /api/export - Export compliance report
+API ENDPOINTS (see knowledge/API-Specification-Yggdrasil.md for full detail)
+- POST /api/policies/ingest — PDF upload, Gemini extraction, `rule_validation` in response
+- POST /api/policies/generate-rules — Extract rules from plain text
+- POST /api/policies/:id/rules/add-pdf — Append rules from PDF to existing policy
+- POST /api/policies/prebuilt — Load AML/GDPR/SOC2 pack
+- POST /api/audits — Create audit session
+- GET /api/policies/:id — Policy + rules (includes `validation_*` when columns exist)
+- PATCH /api/policies/:id/rules — Toggle `is_active` on a rule
+- POST /api/data/upload — CSV upload + suggested mapping
+- GET /api/data/check/:uploadId — Whether cached upload rows are still available
+- POST /api/data/mapping/confirm — Persist mapping, returns `mapping_id`
+- POST /api/data/mapping/readiness — Pre-scan mapping vs executable rules
+- POST /api/scan/run — Synchronous scan (mapping + rules validated)
+- POST /api/scan/rescan — **Same as** `/api/scan/run` (shared handler)
+- GET /api/scan/:id — Scan status
+- GET /api/scan/history — History
+- POST /api/validate — Ground-truth metrics (labeled datasets)
+- GET /api/violations/cases — Cases rollup
+- GET /api/violations — List violations
+- PATCH /api/violations/:id — Review / false positive
+- GET /api/compliance/score — Score
+- GET /api/export — Export report JSON
+
+Deferred / not implemented as live routes in this repo: generic GET /api/schema, POST /api/data/airtable, policy clarification Q&A routes under `/api/policies/:id/clarify`.
 
 DATA SCHEMAS
 Rule: { rule_id, type, description, severity, conditions: { field, operator, value }, policy_excerpt }

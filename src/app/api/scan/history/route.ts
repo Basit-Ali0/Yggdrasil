@@ -1,51 +1,51 @@
 // ============================================================
-// GET /api/scan/history — Scan history for user
-// Now includes delta (new/resolved counts) per scan
+// GET /api/scan/history — Scan history for the current org
+// Includes delta (new/resolved counts) per scan
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseForRequest, getUserIdFromRequest, AuthError } from '@/lib/supabase';
+import { AuthError } from '@/lib/supabase';
+import { resolveOrgContext, orgFilter } from '@/lib/org-context';
 
 async function calculateScanDelta(
     supabase: any,
     scan: any,
     allScans: any[]
 ): Promise<{ new_count: number; resolved_count: number; unchanged_count: number } | null> {
-    // Find previous scan for the same policy
     const previousScan = allScans.find(
-        (s) => s.policy_id === scan.policy_id && 
-               s.created_at < scan.created_at &&
-               s.status === 'completed'
+        (candidate) =>
+            candidate.policy_id === scan.policy_id &&
+            candidate.created_at < scan.created_at &&
+            candidate.status === 'completed'
     );
 
     if (!previousScan) return null;
 
-    // Get violations for both scans
     const { data: currentViolations } = await supabase
         .from('violations')
         .select('rule_id, account')
         .eq('scan_id', scan.id);
 
-    const { data: prevViolations } = await supabase
+    const { data: previousViolations } = await supabase
         .from('violations')
         .select('rule_id, account')
         .eq('scan_id', previousScan.id);
 
     const currentSignatures = new Set(
-        (currentViolations || []).map((v: any) => `${v.rule_id}:${v.account}`)
+        (currentViolations ?? []).map((violation: any) => `${violation.rule_id}:${violation.account}`)
     );
-    const prevSignatures = new Set(
-        (prevViolations || []).map((v: any) => `${v.rule_id}:${v.account}`)
+    const previousSignatures = new Set(
+        (previousViolations ?? []).map((violation: any) => `${violation.rule_id}:${violation.account}`)
     );
 
     let newCount = 0;
     let resolvedCount = 0;
 
-    for (const sig of currentSignatures) {
-        if (!prevSignatures.has(sig)) newCount++;
+    for (const signature of currentSignatures) {
+        if (!previousSignatures.has(signature)) newCount++;
     }
-    for (const sig of prevSignatures) {
-        if (!currentSignatures.has(sig)) resolvedCount++;
+    for (const signature of previousSignatures) {
+        if (!currentSignatures.has(signature)) resolvedCount++;
     }
 
     return {
@@ -57,15 +57,19 @@ async function calculateScanDelta(
 
 export async function GET(request: NextRequest) {
     try {
-        const supabase = await getSupabaseForRequest(request);
-        const userId = await getUserIdFromRequest(request);
+        const ctx = await resolveOrgContext(request);
+        const org = orgFilter(ctx);
 
-        const { data: scans, error } = await supabase
+        let query = ctx.supabase
             .from('scans')
             .select('*')
-            .eq('user_id', userId)
             .eq('status', 'completed')
             .order('created_at', { ascending: false });
+
+        if (org) query = query.eq('organization_id', org);
+        else query = query.eq('user_id', ctx.userId);
+
+        const { data: scans, error } = await query;
 
         if (error) {
             return NextResponse.json(
@@ -74,30 +78,26 @@ export async function GET(request: NextRequest) {
             );
         }
 
-        // Calculate delta for each scan
         const scansWithDelta = await Promise.all(
-            (scans ?? []).map(async (s: any) => {
-                const delta = await calculateScanDelta(supabase, s, scans ?? []);
+            (scans ?? []).map(async (scan: any) => {
+                const delta = await calculateScanDelta(ctx.supabase, scan, scans ?? []);
                 return {
-                    id: s.id,
-                    policy_id: s.policy_id,
-                    score: s.compliance_score,
-                    violation_count: s.violation_count,
+                    id: scan.id,
+                    policy_id: scan.policy_id,
+                    score: scan.compliance_score,
+                    violation_count: scan.violation_count,
                     new_violations: delta?.new_count ?? 0,
                     resolved_violations: delta?.resolved_count ?? 0,
                     unchanged_count: delta?.unchanged_count ?? 0,
-                    status: s.status,
-                    created_at: s.created_at,
-                    completed_at: s.completed_at,
-                    audit_name: s.audit_name ?? null,
+                    status: scan.status,
+                    created_at: scan.created_at,
+                    completed_at: scan.completed_at,
+                    audit_name: scan.audit_name ?? null,
                 };
             })
         );
 
-        return NextResponse.json({
-            scans: scansWithDelta,
-        });
-
+        return NextResponse.json({ scans: scansWithDelta });
     } catch (err) {
         if (err instanceof AuthError) {
             return NextResponse.json(

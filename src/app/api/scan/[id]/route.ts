@@ -1,11 +1,64 @@
 // ============================================================
 // GET /api/scan/[id] — Poll scan status (no WebSockets)
 // Response per CONTRACTS.md Screen 6 polling
-// Delta calculation added: compares with previous scan
+// Includes review summary, delta, and score history when available.
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseForRequest } from '@/lib/supabase';
+
+async function calculateDelta(
+    supabase: Awaited<ReturnType<typeof getSupabaseForRequest>>,
+    scan: any,
+    scanId: string
+) {
+    if (scan.status !== 'completed' || !scan.policy_id) return null;
+
+    const { data: previousScan } = await supabase
+        .from('scans')
+        .select('id, violation_count')
+        .eq('policy_id', scan.policy_id)
+        .lt('created_at', scan.created_at)
+        .eq('status', 'completed')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+    if (!previousScan) return null;
+
+    const [currentViolations, previousViolations] = await Promise.all([
+        supabase.from('violations').select('rule_id, account').eq('scan_id', scanId),
+        supabase.from('violations').select('rule_id, account').eq('scan_id', previousScan.id),
+    ]);
+
+    const currentSignatures = new Set(
+        (currentViolations.data ?? []).map((violation: any) => `${violation.rule_id}:${violation.account}`)
+    );
+    const previousSignatures = new Set(
+        (previousViolations.data ?? []).map((violation: any) => `${violation.rule_id}:${violation.account}`)
+    );
+
+    let newCount = 0;
+    let resolvedCount = 0;
+    let unchangedCount = 0;
+
+    for (const signature of currentSignatures) {
+        if (previousSignatures.has(signature)) unchangedCount++;
+        else newCount++;
+    }
+
+    for (const signature of previousSignatures) {
+        if (!currentSignatures.has(signature)) resolvedCount++;
+    }
+
+    return {
+        new_count: newCount,
+        resolved_count: resolvedCount,
+        unchanged_count: unchangedCount,
+        previous_scan_id: previousScan.id,
+        previous_violation_count: previousScan.violation_count || 0,
+    };
+}
 
 export async function GET(
     request: NextRequest,
@@ -28,74 +81,29 @@ export async function GET(
             );
         }
 
-        // Get rules count for progress
-        const { count: rulesTotal } = await supabase
-            .from('rules')
-            .select('*', { count: 'exact', head: true })
-            .eq('policy_id', scan.policy_id);
+        const [rulesCountResult, violationsResult, delta] = await Promise.all([
+            supabase.from('rules').select('*', { count: 'exact', head: true }).eq('policy_id', scan.policy_id),
+            scan.status === 'completed'
+                ? supabase.from('violations').select('severity, status').eq('scan_id', id)
+                : Promise.resolve({ data: null } as any),
+            calculateDelta(supabase, scan, id),
+        ]);
 
-        // Calculate delta against previous scan
-        let delta = null;
-        if (scan.status === 'completed' && scan.policy_id) {
-            // Find previous scan for the same policy
-            const { data: previousScan } = await supabase
-                .from('scans')
-                .select('id, violation_count')
-                .eq('policy_id', scan.policy_id)
-                .lt('created_at', scan.created_at)
-                .eq('status', 'completed')
-                .order('created_at', { ascending: false })
-                .limit(1)
-                .single();
+        const rulesTotal = rulesCountResult.count ?? 0;
+        const violations = violationsResult.data ?? [];
 
-            if (previousScan) {
-                // Get current scan violations
-                const { data: currentViolations } = await supabase
-                    .from('violations')
-                    .select('rule_id, account')
-                    .eq('scan_id', id);
+        const reviewSummary = {
+            total: violations.length,
+            pending: violations.filter((violation: any) => violation.status === 'pending').length,
+            approved: violations.filter((violation: any) => violation.status === 'approved').length,
+            false_positive: violations.filter((violation: any) => violation.status === 'false_positive').length,
+            disputed: violations.filter((violation: any) => violation.status === 'disputed').length,
+            by_severity: {} as Record<string, number>,
+        };
 
-                // Get previous scan violations
-                const { data: prevViolations } = await supabase
-                    .from('violations')
-                    .select('rule_id, account')
-                    .eq('scan_id', previousScan.id);
-
-                // Create signatures: rule_id + account
-                const currentSignatures = new Set(
-                    (currentViolations || []).map(v => `${v.rule_id}:${v.account}`)
-                );
-                const prevSignatures = new Set(
-                    (prevViolations || []).map(v => `${v.rule_id}:${v.account}`)
-                );
-
-                // Calculate delta
-                let newCount = 0;
-                let resolvedCount = 0;
-                let unchangedCount = 0;
-
-                for (const sig of currentSignatures) {
-                    if (prevSignatures.has(sig)) {
-                        unchangedCount++;
-                    } else {
-                        newCount++;
-                    }
-                }
-
-                for (const sig of prevSignatures) {
-                    if (!currentSignatures.has(sig)) {
-                        resolvedCount++;
-                    }
-                }
-
-                delta = {
-                    new_count: newCount,
-                    resolved_count: resolvedCount,
-                    unchanged_count: unchangedCount,
-                    previous_scan_id: previousScan.id,
-                    previous_violation_count: previousScan.violation_count || 0,
-                };
-            }
+        for (const violation of violations) {
+            const severity = (violation as any).severity ?? 'UNKNOWN';
+            reviewSummary.by_severity[severity] = (reviewSummary.by_severity[severity] ?? 0) + 1;
         }
 
         return NextResponse.json({
@@ -103,24 +111,24 @@ export async function GET(
             status: scan.status,
             violation_count: scan.violation_count ?? 0,
             compliance_score: scan.compliance_score ?? 0,
-            rules_processed: scan.status === 'completed' ? (rulesTotal ?? 0) : 0,
-            rules_total: rulesTotal ?? 0,
+            rules_processed: scan.status === 'completed' ? rulesTotal : 0,
+            rules_total: rulesTotal,
             created_at: scan.created_at,
             completed_at: scan.completed_at,
             audit_name: scan.audit_name ?? null,
+            data_source: scan.data_source ?? 'csv',
+            file_name: scan.file_name ?? null,
             score_history: scan.score_history ?? [],
             record_count: scan.record_count ?? 0,
-            // Rescan fields
             policy_id: scan.policy_id ?? null,
             upload_id: scan.upload_id ?? null,
             mapping_id: scan.mapping_id ?? null,
             audit_id: scan.audit_id ?? null,
             mapping_config: scan.mapping_config ?? null,
             temporal_scale: scan.temporal_scale ?? null,
-            // Delta
+            review_summary: reviewSummary,
             delta,
         });
-
     } catch (err) {
         console.error('GET /api/scan/[id] error:', err);
         return NextResponse.json(
@@ -152,7 +160,6 @@ export async function DELETE(
         }
 
         return NextResponse.json({ success: true });
-
     } catch (err) {
         console.error('DELETE /api/scan/[id] error:', err);
         return NextResponse.json(

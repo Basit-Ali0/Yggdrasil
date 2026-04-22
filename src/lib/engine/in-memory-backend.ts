@@ -1,6 +1,6 @@
 // ============================================================
 // InMemoryBackend — Deterministic rule enforcement
-// Supports AML, GDPR, SOC2, and custom PDF-extracted rules
+// All 11 AML rules from enforcement-spec.md
 // Hour-0 Bug #1: ROUND_AMOUNT uses (x % 1000) === 0
 // Hour-0 Bug #3: Pre-filter records to amount >= 8000
 // Routes windowed rules by rule.type (NOT rule.timeWindow)
@@ -8,30 +8,15 @@
 
 import { v4 as uuid } from 'uuid';
 import { Rule, NormalizedRecord, WINDOWED_RULE_TYPES } from '../types';
-import { normalizeTime, getWindowKey } from './temporal';
+import { getWindowKey } from './temporal';
 import {
     generateExplanation,
     generateWindowedExplanation,
 } from './explainability';
+import type { ExecutionBackend } from './execution-backend';
+import type { ViolationResult } from './violation-result';
 
-export interface ViolationResult {
-    id: string;
-    rule_id: string;
-    rule_name: string;
-    severity: 'CRITICAL' | 'HIGH' | 'MEDIUM';
-    record_id: string;
-    account: string;
-    amount: number;
-    transaction_type: string;
-    evidence: Record<string, any>;
-    threshold: number;
-    actual_value: number;
-    policy_excerpt: string;
-    policy_section: string;
-    explanation: string;
-    status: 'pending';
-    confidence?: number;
-}
+export type { ViolationResult } from './violation-result';
 
 /**
  * Pre-filter records to amount >= 8000 per RuleEngine.md hard rule.
@@ -51,40 +36,34 @@ function isRoundAmount(x: number): boolean {
     return x % 1000 === 0;
 }
 
-/**
- * Coerce equality comparison for CSV string values vs typed rule values.
- * CSV always produces strings; rules define booleans/numbers.
- * "false" should equal false, "16" should equal 16, etc.
- */
 function coerceEquals(left: any, right: any): boolean {
-    // Same type — direct comparison
     if (typeof left === typeof right) return left === right;
 
-    // Rule value is boolean, CSV value is string
     if (typeof right === 'boolean' && typeof left === 'string') {
         return (left.toLowerCase() === 'true') === right;
     }
 
-    // Rule value is number, CSV value is string
     if (typeof right === 'number' && typeof left === 'string') {
         return parseFloat(left) === right;
     }
 
-    // Rule value is string, CSV value is number/boolean
     if (typeof left === 'boolean' && typeof right === 'string') {
         return left === (right.toLowerCase() === 'true');
     }
+
     if (typeof left === 'number' && typeof right === 'string') {
         return left === parseFloat(right);
     }
 
-    // Fallback: loose equality
-    // eslint-disable-next-line eqeqeq
     return left == right;
 }
 
-export class InMemoryBackend {
+export class InMemoryBackend implements ExecutionBackend {
     name = 'in-memory';
+
+    supportsRule(_rule: Rule): boolean {
+        return true;
+    }
 
     execute(
         rule: Rule,
@@ -118,104 +97,136 @@ export class InMemoryBackend {
     }
 
     private checkSingleTxRule(rule: Rule, record: NormalizedRecord): boolean {
-        // All rules now go through generic condition checker
-        return this.checkConditions(rule, record);
+        switch (rule.rule_id) {
+            case 'CTR_THRESHOLD':
+                return (
+                    record.amount >= 10000 &&
+                    ['WIRE', 'CASH_OUT', 'TRANSFER', 'DEPOSIT', 'CASH_IN'].includes(
+                        record.type.toUpperCase()
+                    )
+                );
+
+            case 'SAR_THRESHOLD':
+                return (
+                    record.amount >= 5000 &&
+                    ['WIRE', 'TRANSFER'].includes(record.type.toUpperCase())
+                );
+
+            case 'BALANCE_MISMATCH': {
+                if (
+                    record.oldbalanceOrg === undefined ||
+                    record.newbalanceOrig === undefined
+                )
+                    return false;
+                const expectedAfterSend = record.oldbalanceOrg - record.amount;
+                return Math.abs(expectedAfterSend - record.newbalanceOrig) > 0.01;
+            }
+
+            case 'FRAUD_INDICATOR':
+                return (
+                    ['CASH_OUT', 'TRANSFER'].includes(record.type.toUpperCase()) &&
+                    record.oldbalanceDest === 0 &&
+                    (record.newbalanceDest ?? 0) > 0
+                );
+
+            case 'HIGH_VALUE_TRANSFER':
+                return (
+                    ['WIRE', 'TRANSFER'].includes(record.type.toUpperCase()) &&
+                    record.amount > 50000
+                );
+
+            default:
+                // Generic condition check
+                return this.checkConditions(rule, record);
+        }
     }
 
     private checkConditions(rule: Rule, record: NormalizedRecord): boolean {
         const cond = rule.conditions;
         if (!cond) return false;
-        
+
         return this.evaluateLogic(cond, record);
     }
 
     private evaluateLogic(cond: any, record: NormalizedRecord): boolean {
-        // Guard: skip primitives (strings, numbers) that LLM may produce in condition arrays
         if (cond === null || cond === undefined || typeof cond !== 'object') {
             return false;
         }
 
-        // Handle recursive compound conditions
         if ('AND' in cond && Array.isArray(cond.AND)) {
-            return (cond.AND as any[]).every(c => this.evaluateLogic(c, record));
+            return (cond.AND as any[]).every((child) => this.evaluateLogic(child, record));
         }
+
         if ('OR' in cond && Array.isArray(cond.OR)) {
-            return (cond.OR as any[]).some(c => this.evaluateLogic(c, record));
+            return (cond.OR as any[]).some((child) => this.evaluateLogic(child, record));
         }
-        
-        // Handle simple condition
+
         if ('field' in cond) {
             return this.checkSingleCondition(cond as any, record);
         }
-        
+
         return false;
     }
 
-    private checkSingleCondition(cond: { field: string; operator: string; value: any; value_type?: string }, record: NormalizedRecord): boolean {
+    private checkSingleCondition(
+        cond: { field: string; operator: string; value: any; value_type?: string },
+        record: NormalizedRecord
+    ): boolean {
         const leftValue = record[cond.field];
         let rightValue = cond.value;
-
-        // Normalize operator aliases from Gemini LLM output
         const op = this.normalizeOperator(cond.operator);
 
-        // Handle existence operators BEFORE null check — they test for field presence/absence
         if (op === 'EXISTS') {
             return leftValue !== undefined && leftValue !== null && leftValue !== '';
         }
+
         if (op === 'NOT_EXISTS') {
             return leftValue === undefined || leftValue === null || leftValue === '';
         }
 
-        // SANITY CHECK: If field is missing or undefined, don't match (prevents massive false positives)
         if (leftValue === undefined || leftValue === null) {
             return false;
         }
 
-        // Support cross-field comparison
         if (cond.value_type === 'field' && typeof rightValue === 'string') {
             rightValue = record[rightValue];
             if (rightValue === undefined || rightValue === null) return false;
         }
 
         switch (op) {
-            // Numeric comparisons — parseFloat handles CSV string values
             case '>=':
-                return parseFloat(leftValue) >= parseFloat(rightValue);
+                return parseFloat(String(leftValue)) >= parseFloat(String(rightValue));
             case '>':
-                return parseFloat(leftValue) > parseFloat(rightValue);
+                return parseFloat(String(leftValue)) > parseFloat(String(rightValue));
             case '<=':
-                return parseFloat(leftValue) <= parseFloat(rightValue);
+                return parseFloat(String(leftValue)) <= parseFloat(String(rightValue));
             case '<':
-                return parseFloat(leftValue) < parseFloat(rightValue);
-
-            // Equality — with type coercion for CSV string values
+                return parseFloat(String(leftValue)) < parseFloat(String(rightValue));
             case '==':
                 return coerceEquals(leftValue, rightValue);
             case '!=':
                 return !coerceEquals(leftValue, rightValue);
-
-            // Set membership
             case 'IN':
                 return Array.isArray(rightValue) && rightValue.includes(leftValue);
             case 'BETWEEN':
                 return (
                     Array.isArray(rightValue) &&
-                    (leftValue as number) >= rightValue[0] &&
-                    (leftValue as number) <= rightValue[1]
+                    parseFloat(String(leftValue)) >= rightValue[0] &&
+                    parseFloat(String(leftValue)) <= rightValue[1]
                 );
-
-            // String matching
             case 'CONTAINS':
-                return typeof leftValue === 'string' && typeof rightValue === 'string' &&
-                    leftValue.toLowerCase().includes(rightValue.toLowerCase());
+                return (
+                    typeof leftValue === 'string' &&
+                    typeof rightValue === 'string' &&
+                    leftValue.toLowerCase().includes(rightValue.toLowerCase())
+                );
             case 'MATCH':
-                if (typeof leftValue === 'string' && typeof rightValue === 'string') {
-                    return new RegExp(rightValue).test(leftValue);
-                }
-                return false;
-
+                return (
+                    typeof leftValue === 'string' &&
+                    typeof rightValue === 'string' &&
+                    new RegExp(rightValue).test(leftValue)
+                );
             default:
-                console.warn(`[ENGINE] Unknown operator: '${cond.operator}' in rule condition for field '${cond.field}'`);
                 return false;
         }
     }
@@ -292,15 +303,19 @@ export class InMemoryBackend {
         temporalScale: number
     ): ViolationResult[] {
         switch (rule.type) {
-            case 'aggregation':
             case 'ctr_aggregation':
-                return this.checkAggregation(rule, account, records, temporalScale);
-            case 'velocity':
-            case 'velocity_limit':
-            case 'sar_velocity':
-            case 'sub_threshold_velocity':
+                return this.checkCtrAggregation(rule, account, records, temporalScale);
             case 'structuring':
-                return this.checkVelocity(rule, account, records, temporalScale);
+                return this.checkStructuring(rule, account, records, temporalScale);
+            case 'sub_threshold_velocity':
+                return this.checkSubThresholdVelocity(
+                    rule,
+                    account,
+                    records,
+                    temporalScale
+                );
+            case 'sar_velocity':
+                return this.checkSarVelocity(rule, account, records, temporalScale);
             case 'dormant_reactivation':
                 return this.checkDormantReactivation(
                     rule,
@@ -310,57 +325,39 @@ export class InMemoryBackend {
                 );
             case 'round_amount':
                 return this.checkRoundAmount(rule, account, records, temporalScale);
-            case 'behavioral':
-                // For behavioral, we treat it as single tx but with history context
-                return this.executeSingleTx(rule, records);
             default:
                 return [];
         }
     }
 
-    private checkAggregation(
+    // ── CTR_AGGREGATION ────────────────────────────────────────
+    // Group by sender+receiver per 24h window, flag if SUM >= 10000
+
+    private checkCtrAggregation(
         rule: Rule,
         account: string,
         records: NormalizedRecord[],
         scale: number
     ): ViolationResult[] {
         const violations: ViolationResult[] = [];
-        const window = rule.time_window || 24;
-        const groupBy = rule.group_by_field || 'recipient';
-        const aggField = rule.aggregation_field || 'amount';
-        const aggFunc = rule.aggregation_function || 'sum';
-        const threshold = rule.threshold || 0;
 
-        // Group by (groupByField, window)
-        const windows = new Map<string, NormalizedRecord[]>();
+        // Group by (recipient, day-window)
+        const pairWindows = new Map<string, NormalizedRecord[]>();
         for (const r of records) {
-            const timeKey = getWindowKey(r.step, window, scale);
-            const groupVal = r[groupBy] || 'unknown';
-            const key = `${groupVal}_${timeKey}`;
-            if (!windows.has(key)) windows.set(key, []);
-            windows.get(key)!.push(r);
+            const dayKey = getWindowKey(r.step, 24, scale);
+            const key = `${r.recipient}_${dayKey}`;
+            if (!pairWindows.has(key)) pairWindows.set(key, []);
+            pairWindows.get(key)!.push(r);
         }
 
-        for (const [key, txns] of windows) {
-            let actualValue = 0;
-            const values = txns.map(t => t[aggField] as number).filter(v => typeof v === 'number');
-
-            if (aggFunc === 'sum') actualValue = values.reduce((a, b) => a + b, 0);
-            else if (aggFunc === 'count') actualValue = values.length;
-            else if (aggFunc === 'avg') actualValue = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : 0;
-            else if (aggFunc === 'max') actualValue = values.length > 0 ? Math.max(...values) : 0;
-            else if (aggFunc === 'min') actualValue = values.length > 0 ? Math.min(...values) : 0;
-
-            // Special case for legacy CTR Aggregation
-            const isLegacyCtr = rule.rule_id === 'CTR_AGGREGATION' && txns.length > 1;
-            const meetsThreshold = actualValue >= threshold;
-
-            if (meetsThreshold && (rule.type === 'aggregation' || isLegacyCtr || txns.length > 1)) {
+        for (const [key, txns] of pairWindows) {
+            const total = txns.reduce((s, r) => s + r.amount, 0);
+            if (total >= 10000 && txns.length > 1) {
                 violations.push(
                     this.createWindowedViolation(rule, account, txns, {
-                        actual_value: actualValue,
-                        threshold,
-                        group_value: key.split('_')[0],
+                        actual_value: total,
+                        threshold: 10000,
+                        recipient: txns[0].recipient,
                     })
                 );
             }
@@ -369,50 +366,107 @@ export class InMemoryBackend {
         return violations;
     }
 
-    private checkVelocity(
+    // ── STRUCTURING_PATTERN ────────────────────────────────────
+    // 3+ transactions $8K–$10K within 24 hours
+
+    private checkStructuring(
+        rule: Rule,
+        account: string,
+        records: NormalizedRecord[],
+        scale: number
+    ): ViolationResult[] {
+        // Pre-filter to sub-threshold amounts
+        const filtered = preFilterForSubThreshold(records).filter(
+            (r) => r.amount < 10000
+        );
+        if (filtered.length < 3) return [];
+
+        const violations: ViolationResult[] = [];
+
+        // Group by 24h window
+        const windows = new Map<number, NormalizedRecord[]>();
+        for (const r of filtered) {
+            const wk = getWindowKey(r.step, 24, scale);
+            if (!windows.has(wk)) windows.set(wk, []);
+            windows.get(wk)!.push(r);
+        }
+
+        for (const [, txns] of windows) {
+            if (txns.length >= 3) {
+                violations.push(
+                    this.createWindowedViolation(rule, account, txns, {
+                        actual_value: txns.length,
+                        threshold: 3,
+                    })
+                );
+            }
+        }
+
+        return violations;
+    }
+
+    // ── SUB_THRESHOLD_VELOCITY ─────────────────────────────────
+    // 5+ sub-threshold transactions ($8K–$10K) in 24 hours
+
+    private checkSubThresholdVelocity(
+        rule: Rule,
+        account: string,
+        records: NormalizedRecord[],
+        scale: number
+    ): ViolationResult[] {
+        const filtered = preFilterForSubThreshold(records).filter(
+            (r) => r.amount < 10000
+        );
+        if (filtered.length < 5) return [];
+
+        const violations: ViolationResult[] = [];
+
+        const windows = new Map<number, NormalizedRecord[]>();
+        for (const r of filtered) {
+            const wk = getWindowKey(r.step, 24, scale);
+            if (!windows.has(wk)) windows.set(wk, []);
+            windows.get(wk)!.push(r);
+        }
+
+        for (const [, txns] of windows) {
+            if (txns.length >= 5) {
+                violations.push(
+                    this.createWindowedViolation(rule, account, txns, {
+                        actual_value: txns.length,
+                        threshold: 5,
+                    })
+                );
+            }
+        }
+
+        return violations;
+    }
+
+    // ── SAR_VELOCITY ───────────────────────────────────────────
+    // SUM(amount) > $25,000 in 24h
+
+    private checkSarVelocity(
         rule: Rule,
         account: string,
         records: NormalizedRecord[],
         scale: number
     ): ViolationResult[] {
         const violations: ViolationResult[] = [];
-        const window = rule.time_window || 24;
-        const threshold = rule.threshold || 1;
-        
-        // Velocity usually implies COUNT or SUM over window
-        // For PaySim AML, we had special filters for structuring
-        let filtered = records;
-        if (rule.rule_id === 'STRUCTURING_PATTERN' || rule.rule_id === 'SUB_THRESHOLD_VELOCITY') {
-            filtered = preFilterForSubThreshold(records).filter(r => r.amount < 10000);
-        }
 
         const windows = new Map<number, NormalizedRecord[]>();
-        for (const r of filtered) {
-            const wk = getWindowKey(r.step, window, scale);
+        for (const r of records) {
+            const wk = getWindowKey(r.step, 24, scale);
             if (!windows.has(wk)) windows.set(wk, []);
             windows.get(wk)!.push(r);
         }
 
         for (const [, txns] of windows) {
-            const count = txns.length;
-            const sum = txns.reduce((s, r) => s + r.amount, 0);
-            
-            let triggered = false;
-            let actualValue = count;
-
-            if (rule.type === 'velocity' || rule.type === 'velocity_limit' || rule.type === 'sub_threshold_velocity' || rule.type === 'structuring') {
-                triggered = count >= threshold;
-                actualValue = count;
-            } else if (rule.type === 'sar_velocity') {
-                triggered = sum > (rule.threshold || 25000);
-                actualValue = sum;
-            }
-
-            if (triggered) {
+            const total = txns.reduce((s, r) => s + r.amount, 0);
+            if (total > 25000) {
                 violations.push(
                     this.createWindowedViolation(rule, account, txns, {
-                        actual_value: actualValue,
-                        threshold: rule.threshold || threshold,
+                        actual_value: total,
+                        threshold: 25000,
                     })
                 );
             }
@@ -436,9 +490,10 @@ export class InMemoryBackend {
         // Sort by step
         const sorted = [...records].sort((a, b) => a.step - b.step);
 
-        // Find gaps: look for 90-step dormancy (scaled)
-        const dormancyThreshold = 90 * (scale === 24 ? 1 : scale); // 90 days in steps
-        const reactivationWindow = 30 * (scale === 24 ? 1 : scale);
+        // Find gaps: 90 days expressed in steps (steps_per_day = 24 / scale)
+        const stepsPerDay = scale > 0 ? 24 / scale : 1;
+        const dormancyThreshold = Math.round(90 * stepsPerDay);
+        const reactivationWindow = Math.round(30 * stepsPerDay);
 
         for (let i = 1; i < sorted.length; i++) {
             const gap = sorted[i].step - sorted[i - 1].step;
@@ -501,67 +556,10 @@ export class InMemoryBackend {
 
     // ── Violation Builders ─────────────────────────────────────
 
-    /**
-     * Extract the primary condition match from a rule for display purposes.
-     * For financial rules with thresholds, returns threshold vs amount.
-     * For condition-based rules (GDPR/SOC2), returns the first leaf condition's
-     * expected value vs the actual record value.
-     */
-    private extractConditionMatch(
-        rule: Rule,
-        record: NormalizedRecord
-    ): { threshold: number; actual_value: number; condition_summary?: string } {
-        // If rule has an explicit numeric threshold, use financial comparison
-        if (rule.threshold != null && rule.threshold > 0) {
-            return { threshold: rule.threshold, actual_value: record.amount };
-        }
-
-        // For condition-based rules, extract the first leaf condition for display
-        const cond = rule.conditions;
-        if (cond) {
-            const leaf = this.findFirstLeafCondition(cond);
-            if (leaf) {
-                const actualVal = record[leaf.field];
-                const expectedVal = leaf.value;
-                // Build a human-readable summary depending on operator type
-                let summary: string;
-                if (leaf.operator === 'exists') {
-                    summary = `${leaf.field} is present (value: ${JSON.stringify(actualVal)})`;
-                } else if (leaf.operator === 'not_exists') {
-                    summary = `${leaf.field} is missing or empty`;
-                } else {
-                    summary = `${leaf.field} ${leaf.operator} ${JSON.stringify(expectedVal)} (actual: ${JSON.stringify(actualVal)})`;
-                }
-                // Store as numbers if possible, otherwise use 0 placeholders —
-                // the evidence drawer will use condition_summary for display
-                return {
-                    threshold: typeof expectedVal === 'number' ? expectedVal : 0,
-                    actual_value: typeof actualVal === 'number' ? actualVal : 0,
-                    condition_summary: summary,
-                };
-            }
-        }
-
-        return { threshold: 0, actual_value: record.amount };
-    }
-
-    private findFirstLeafCondition(cond: any): { field: string; operator: string; value: any } | null {
-        if ('field' in cond) return cond;
-        if ('AND' in cond && Array.isArray(cond.AND) && cond.AND.length > 0) {
-            return this.findFirstLeafCondition(cond.AND[0]);
-        }
-        if ('OR' in cond && Array.isArray(cond.OR) && cond.OR.length > 0) {
-            return this.findFirstLeafCondition(cond.OR[0]);
-        }
-        return null;
-    }
-
     private createViolation(
         rule: Rule,
         record: NormalizedRecord
     ): ViolationResult {
-        const match = this.extractConditionMatch(rule, record);
-
         return {
             id: uuid(),
             rule_id: rule.rule_id,
@@ -571,12 +569,9 @@ export class InMemoryBackend {
             account: record.account,
             amount: record.amount,
             transaction_type: record.type,
-            evidence: {
-                ...record,
-                ...(match.condition_summary ? { condition_summary: match.condition_summary } : {}),
-            },
-            threshold: match.threshold,
-            actual_value: match.actual_value,
+            evidence: { ...record },
+            threshold: rule.threshold ?? 0,
+            actual_value: record.amount,
             policy_excerpt: rule.policy_excerpt,
             policy_section: rule.policy_section ?? '',
             explanation: generateExplanation(rule, record),
@@ -590,28 +585,29 @@ export class InMemoryBackend {
         records: NormalizedRecord[],
         extras: Record<string, any> = {}
     ): ViolationResult {
-        const total = records.reduce((sum, r) => sum + r.amount, 0);
+        const sorted = [...records].sort((a, b) => a.step - b.step);
+        const total = sorted.reduce((sum, r) => sum + r.amount, 0);
 
         return {
             id: uuid(),
             rule_id: rule.rule_id,
             rule_name: rule.name,
             severity: rule.severity,
-            record_id: `${account}_${rule.rule_id}_${records[0]?.step ?? 0}`,
+            record_id: `${account}_${rule.rule_id}_${sorted[0]?.step ?? 0}`,
             account,
             amount: total,
-            transaction_type: records[0]?.type ?? '',
+            transaction_type: sorted[0]?.type ?? '',
             evidence: {
                 account,
-                transaction_count: records.length,
-                amounts: records.map((r) => r.amount),
-                records: records.slice(0, 10), // limit evidence size
+                transaction_count: sorted.length,
+                amounts: sorted.map((r) => r.amount),
+                records: sorted.slice(0, 10), // limit evidence size
             },
             threshold: extras.threshold ?? rule.threshold ?? 0,
             actual_value: extras.actual_value ?? total,
             policy_excerpt: rule.policy_excerpt,
             policy_section: rule.policy_section ?? '',
-            explanation: generateWindowedExplanation(rule, account, records, extras),
+            explanation: generateWindowedExplanation(rule, account, sorted, extras),
             status: 'pending',
         };
     }

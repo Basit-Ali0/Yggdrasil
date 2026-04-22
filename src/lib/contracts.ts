@@ -4,6 +4,10 @@
 // ============================================================
 
 import type { Rule, Violation, ClarificationQuestion } from './types';
+import type { RawExtractedRule } from './validators/extracted-policy-rules';
+
+// ── Audit lifecycle types ────────────────────────────────────
+export type AuditStatus = 'draft' | 'ready_to_scan' | 'scan_running' | 'completed' | 'failed';
 
 // ── Screen 2 → 3: POST /api/audits ──────────────────────────
 export interface CreateAuditRequest {
@@ -16,6 +20,38 @@ export interface CreateAuditResponse {
     audit_id: string;
     policy_id: string;
     rules: Rule[];
+}
+
+/** GET /api/audits/:id */
+export interface AuditDetailResponse {
+    id: string;
+    name: string;
+    status: AuditStatus;
+    organization_id: string | null;
+    data_source: string;
+    connector_id: string | null;
+    error_message: string | null;
+    created_at: string;
+    updated_at: string;
+    policy: { id: string; name: string; type: string; prebuilt_type?: string; rules_count: number } | null;
+    upload: { id: string; file_name: string; row_count: number; created_at: string } | null;
+    mapping: { id: string; ready: boolean } | null;
+    latest_scan: { id: string; status: string; score: number; violation_count: number; created_at: string; completed_at: string | null } | null;
+    can_rescan: boolean;
+}
+
+/** GET /api/audits */
+export interface AuditListResponse {
+    audits: Array<{
+        id: string;
+        name: string;
+        status: AuditStatus;
+        policy_id: string | null;
+        data_source: string;
+        created_at: string;
+        updated_at: string;
+        latest_scan_id: string | null;
+    }>;
 }
 
 // ── Screen 3 → 4: POST /api/data/upload ─────────────────────
@@ -44,6 +80,65 @@ export interface ConfirmMappingResponse {
     ready_to_scan: boolean;
 }
 
+// ── POST /api/data/mapping/readiness ───────────────────────
+export type MappingReadinessState = 'ready' | 'warning' | 'blocked';
+
+export interface MappingReadinessRuleDependency {
+    rule_id: string;
+    rule_name: string;
+    is_active: boolean;
+    required_fields: string[];
+}
+
+export interface MappingReadinessResponse {
+    state: MappingReadinessState;
+    missing_required: string[];
+    invalid_columns: string[];
+    warnings: string[];
+    required_fields: string[];
+    rule_dependencies: MappingReadinessRuleDependency[];
+    sample_normalized_rows: Record<string, unknown>[];
+}
+
+/** Per-rule engine validation (ingest, add-pdf, generate-rules). */
+export interface RuleValidationIssue {
+    category: string;
+    message: string;
+    path?: string;
+}
+
+export interface RuleValidationEntry {
+    rule_id: string;
+    valid: boolean;
+    issues: RuleValidationIssue[];
+}
+
+export interface PolicyWithRulesPayload {
+    id: string;
+    name: string;
+    rules: RawExtractedRule[];
+    created_at: string;
+}
+
+export interface PolicyExtractResponse {
+    policy: PolicyWithRulesPayload;
+    rule_validation: RuleValidationEntry[];
+}
+
+/** POST /api/policies/:id/rules/add-pdf */
+export interface PolicyAddPdfRulesResponse {
+    added_count: number;
+    /** Rules that passed engine validation and are active. */
+    inserted_valid: number;
+    /** Rules inserted but quarantined (is_active: false) due to validation issues. */
+    inserted_quarantined: number;
+    /** Rules skipped because an identical rule (same normalized identity key) already exists. */
+    skipped_count: number;
+    skipped_rule_ids: string[];
+    rules: RawExtractedRule[];
+    rule_validation?: RuleValidationEntry[];
+}
+
 // ── Screen 5 → 6: POST /api/scan/run ────────────────────────
 export interface StartScanRequest {
     audit_id: string;
@@ -55,7 +150,11 @@ export interface StartScanRequest {
 
 export interface StartScanResponse {
     scan_id: string;
-    status: 'running';
+    status: 'running' | 'completed';
+    /** AML only: number of investigation cases auto-created */
+    cases_created?: number;
+    /** AML only: number of unique subjects flagged */
+    subjects_flagged?: number;
 }
 
 // ── Screen 6 polling: GET /api/scan/:id ──────────────────────
@@ -186,14 +285,179 @@ export interface ScanHistoryResponse {
 export interface ExportResponse {
     report: {
         generated_at: string;
-        policy: { id: string; name: string };
-        scan: { id: string; score: number; violation_count: number; scan_date: string };
+        organization: { id: string; name: string } | null;
+        audit: { id: string; name: string } | null;
+        policy: { id: string; name: string; type: string; rules_count: number };
+        scan: {
+            id: string;
+            status: string;
+            compliance_score: number;
+            record_count: number;
+            violation_count: number;
+            created_at: string;
+            completed_at: string | null;
+        };
         violations: Violation[];
+        reviews: {
+            total: number;
+            approved: number;
+            false_positive: number;
+            disputed: number;
+            pending: number;
+            notes: Array<{
+                violation_id: string;
+                status: string;
+                note: string;
+                reviewed_by: string;
+                reviewed_at: string;
+            }>;
+        };
         summary: {
             total_violations: number;
-            high_severity: number;
-            medium_severity: number;
-            low_severity: number;
+            by_severity: Record<string, number>;
+            by_rule: Array<{ rule_id: string; rule_name: string; count: number }>;
+        };
+    };
+}
+
+// ── Connector types ─────────────────────────────────────────
+export type ConnectorType = 'postgres' | 's3_csv';
+
+export interface Connector {
+    id: string;
+    name: string;
+    type: ConnectorType;
+    config: Record<string, unknown>;
+    status: 'active' | 'disabled' | 'error';
+    last_tested_at: string | null;
+    created_at: string;
+}
+
+export interface ConnectorListResponse {
+    connectors: Connector[];
+}
+
+export interface ConnectorTestResponse {
+    ok: boolean;
+    error?: string;
+    message?: string;
+}
+
+export interface ConnectorDiscoverResponse {
+    schemas?: Array<{ name: string; tables: string[] }>;
+    files?: Array<{ key: string; size: number; last_modified: string | null }>;
+}
+
+export interface ConnectorPreviewResponse {
+    headers: string[];
+    rows: Record<string, unknown>[];
+    total_rows?: number;
+    preview_rows: number;
+}
+
+export interface ConnectorImportResponse {
+    upload_id: string;
+    row_count: number;
+    headers: string[];
+    file_name: string;
+    source: string;
+    connector_id: string;
+}
+
+// ── Case types (P3) ─────────────────────────────────────────
+export type CaseStatus = 'open' | 'in_review' | 'escalated' | 'closed_no_action' | 'sar_prepared';
+export type CaseDisposition = 'false_positive' | 'monitor' | 'investigate_further' | 'prepare_sar' | 'closed';
+
+export interface Case {
+    id: string;
+    organization_id: string | null;
+    audit_id: string | null;
+    scan_id: string;
+    policy_id: string | null;
+    subject_key: string;
+    subject_type: string;
+    status: CaseStatus;
+    disposition: CaseDisposition | null;
+    owner_id: string | null;
+    narrative: string | null;
+    priority_score: number;
+    severity_rollup: string;
+    violation_count: number;
+    open_violations: number;
+    suspicious_amount: number;
+    counterparty_count: number;
+    latest_activity: string;
+    assigned_at: string | null;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface CaseEvent {
+    id: string;
+    case_id: string;
+    event_type: string;
+    actor_id: string | null;
+    payload: Record<string, unknown>;
+    created_at: string;
+}
+
+export interface CaseListResponse {
+    cases: Case[];
+    total: number;
+    limit: number;
+    offset: number;
+}
+
+export interface CaseDetailResponse extends Case {
+    violations: Violation[];
+    timeline: CaseEvent[];
+    prior_cases: Array<{
+        id: string;
+        scan_id: string;
+        status: string;
+        severity_rollup: string;
+        violation_count: number;
+        suspicious_amount: number;
+        created_at: string;
+    }>;
+    grouped_evidence: Array<{
+        rule_id: string;
+        rule_name: string;
+        count: number;
+        total_amount: number;
+    }>;
+    review_summary: {
+        total: number;
+        pending: number;
+        approved: number;
+        false_positive: number;
+    };
+    sar_ready: boolean;
+}
+
+export interface CaseExportResponse {
+    case_packet: {
+        generated_at: string;
+        organization: { id: string; name: string } | null;
+        case: Omit<Case, 'organization_id'>;
+        sar_prep: {
+            narrative: string | null;
+            date_range_start: string | null;
+            date_range_end: string | null;
+            flagged_amount: number;
+            involved_accounts: string[];
+            counterparties: string[];
+            analyst_summary: string | null;
+            supporting_triggers: Array<{ rule_id: string; rule_name: string; count: number }>;
+        };
+        violations: Violation[];
+        notes: Array<{ content: string; actor_id: string; created_at: string }>;
+        timeline: CaseEvent[];
+        summary: {
+            total_violations: number;
+            suspicious_amount: number;
+            by_severity: Record<string, number>;
+            by_rule: Array<{ rule_id: string; rule_name: string; count: number; total_amount: number }>;
         };
     };
 }

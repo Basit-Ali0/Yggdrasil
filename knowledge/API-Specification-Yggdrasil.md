@@ -30,7 +30,11 @@ http://localhost:3000/api
 | POST | /connections | Save connection config |
 | GET | /connections | List saved connections |
 | GET | /schema | Get database schema |
-| POST | /scan/run | Run compliance scan |
+| POST | /scan/run | Run compliance scan (sync; validates mapping + executable rules) |
+| POST | /api/scan/rescan | Same request/response as `/api/scan/run` (alias for rescan UX) |
+| POST | /api/policies/generate-rules | Extract rules from pasted policy text (Gemini) |
+| POST | /api/policies/:id/rules/add-pdf | Upload PDF; append extracted rules to an existing policy (skip duplicate `rule_id`) |
+| POST | /api/data/mapping/readiness | Pre-scan mapping evaluation vs active executable rules |
 | GET | /scan/history | Get scan history |
 | GET | /scan/:id | Get scan details |
 | GET | /violations | List violations |
@@ -41,6 +45,7 @@ http://localhost:3000/api
 | POST | /api/audits | Create a new audit |
 | POST | /api/policies/prebuilt | Load a prebuilt policy (aml/gdpr/soc2) |
 | POST | /api/data/mapping/confirm | Confirm column mapping before scan |
+| PATCH | /api/policies/:id/rules | Toggle `is_active` on a rule (`rule_id`, `is_active`) |
 | GET  | /api/violations/cases | Get violations grouped by account |
 | POST | /api/validate | Compute accuracy against ground truth labels |
 
@@ -85,9 +90,25 @@ file: <PDF file>
       }
     ],
     "created_at": "2026-02-21T10:00:00Z"
-  }
+  },
+  "rule_validation": [
+    {
+      "rule_id": "RULE_001",
+      "valid": true,
+      "issues": []
+    },
+    {
+      "rule_id": "RULE_002",
+      "valid": false,
+      "issues": [
+        { "category": "unsupported_operator", "message": "operator is not supported: fuzzy_match", "path": "conditions.operator" }
+      ]
+    }
+  ]
 }
 ```
+
+`rule_validation` mirrors engine `validateRuleForExecution`. Invalid rules are still inserted with `is_active: false` when columns `validation_status` / `validation_issues` exist (see migration `2026-04-03-rules-validation-metadata.sql`).
 
 #### GET /policies/:id
 
@@ -266,42 +287,43 @@ Get database schema for current connection.
 
 #### POST /scan/run
 
-Run a compliance scan.
+Run a compliance scan (current app: **synchronous**; returns when finished).
 
 **Request:**
 
 ```json
 {
+  "audit_id": "uuid",
   "policy_id": "uuid",
   "upload_id": "uuid",
-  "mapping_id": "uuid"
+  "mapping_id": "uuid",
+  "audit_name": "optional string"
 }
 ```
 
-**Response (202):**
+**Response (200):**
 
 ```json
 {
-  "scan": {
-    "id": "uuid",
-    "status": "running",
-    "policy_id": "uuid",
-    "connection_id": "uuid",
-    "started_at": "2026-02-21T10:00:00Z"
-  }
-}
-```
-
-**WebSocket event (when complete):**
-
-```json
-{
-  "type": "scan_complete",
   "scan_id": "uuid",
-  "violations": 5,
-  "score": 85.5
+  "status": "completed"
 }
 ```
+
+**Errors:**
+
+| Status | `error` | Meaning |
+|--------|---------|---------|
+| 400 | `VALIDATION_ERROR` | Body failed schema validation |
+| 400 | `MAPPING_INCOMPLETE` | Required mappings missing or CSV columns invalid (`details.missing_required`, `details.invalid_columns`) |
+| 404 | `NOT_FOUND` | Mapping, upload, no active rules, or no **executable** rules after validation |
+| 401 | `UNAUTHORIZED` | Auth required |
+
+**Note:** Only rules with `is_active: true` **and** passing `validateRuleForExecution` are executed. Logs emit JSON lines with `component: "scan/run"` / `"RuleExecutor"` for backend choice and completion.
+
+#### POST /api/scan/rescan
+
+**Same handler as POST /api/scan/run** (identical JSON body and responses). Provided so clients that distinguish “rescan” from “first scan” can call a dedicated path. Server-side **violation diff** (new vs resolved vs unchanged vs prior scan) is not part of this handler yet.
 
 #### GET /scan/history
 
@@ -640,11 +662,119 @@ Confirm AI-suggested column mapping before scan runs.
 ```json
 {
   "mapping_id": "uuid",
-  "mapping_config": { ... },
-  "temporal_scale": 24.0,
   "ready_to_scan": true
 }
 ```
+
+---
+
+#### POST /api/data/mapping/readiness
+
+Evaluate column mapping against **active, executable** rules for a policy (used by the mapping UI; same checks as scan preflight).
+
+**Request:**
+
+```json
+{
+  "policy_id": "uuid",
+  "upload_id": "uuid",
+  "mapping_config": {
+    "account": "nameOrig",
+    "amount": "amount",
+    "step": "step",
+    "type": "type",
+    "recipient": "nameDest"
+  },
+  "mapping_confidence": {
+    "account": 100,
+    "amount": 72
+  }
+}
+```
+
+`mapping_confidence` is optional (per-field 0–100 scores; low scores add **warning** state).
+
+**Response (200):**
+
+```json
+{
+  "state": "ready",
+  "missing_required": [],
+  "invalid_columns": [],
+  "warnings": [],
+  "required_fields": ["account", "amount", "recipient", "step", "type"],
+  "rule_dependencies": [
+    {
+      "rule_id": "CTR_THRESHOLD",
+      "rule_name": "Currency Transaction Report Threshold",
+      "is_active": true,
+      "required_fields": ["account", "amount", "recipient", "step", "type"]
+    }
+  ],
+  "sample_normalized_rows": [{ "account": "C1", "amount": 1000, "step": 1, "type": "TRANSFER" }]
+}
+```
+
+`state` is `ready` | `warning` | `blocked`. When no executable rules exist, `state` is `blocked` with an explanatory warning.
+
+---
+
+#### POST /api/policies/generate-rules
+
+Extract rules from **plain text** (e.g. pre-extracted PDF text). Same persistence shape as `/api/policies/ingest` rules.
+
+**Request:**
+
+```json
+{
+  "text": "…policy body…",
+  "file_name": "optional.pdf"
+}
+```
+
+**Response (201):** Same as ingest: `policy` + `rule_validation` (see above).
+
+---
+
+#### POST /api/policies/:id/rules/add-pdf
+
+Upload a **PDF** (multipart) and extract rules with the same Gemini flow as ingest. New rules are **inserted** for the policy given by `:id`. Rules whose `rule_id` already exists on that policy are **skipped** (no error).
+
+**Request:**
+
+```
+Content-Type: multipart/form-data
+file: <PDF file>
+```
+
+**Response (200) — rules added:**
+
+```json
+{
+  "added_count": 3,
+  "rules": [ { "rule_id": "NEW_RULE", "name": "…", "description": "…", "type": "…", "severity": "HIGH", "conditions": { "field": "amount", "operator": ">=", "value": 10000 }, "policy_excerpt": "…" } ],
+  "rule_validation": [
+    { "rule_id": "NEW_RULE", "valid": true, "issues": [] }
+  ]
+}
+```
+
+**Response (200) — nothing new (all duplicates or empty extraction):**
+
+```json
+{
+  "added_count": 0,
+  "rules": []
+}
+```
+
+When `added_count` is `0`, `rule_validation` is omitted.
+
+Invalid or unsupported rules are still persisted with `is_active: false` when validation columns exist (same as ingest); `rule_validation` describes each row.
+
+**Errors:** `400` (`VALIDATION_ERROR`) for missing/invalid PDF; `401` (`UNAUTHORIZED`); `404` (`NOT_FOUND`) if the policy does not exist; `500` on insert failures.
+
+Structured logs: `component` `policies/add-pdf`, event `rules_quarantined` when any extracted rule fails engine validation.
 
 ---
 
@@ -801,7 +931,9 @@ Polling interval of 1 second is invisible to users.
 | Endpoint | Limit |
 |----------|-------|
 | POST /scan/run | 10/minute |
+| POST /api/scan/rescan | 10/minute |
 | POST /policies/ingest | 5/minute |
+| POST /api/policies/:id/rules/add-pdf | 5/minute |
 | All other endpoints | 60/minute |
 
 ---

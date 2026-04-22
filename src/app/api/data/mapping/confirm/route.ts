@@ -7,10 +7,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ConfirmMappingSchema } from '@/lib/validators';
 import { v4 as uuid } from 'uuid';
 
-// In-memory store for confirmed mappings
-// NOTE: Do not `export` this from a route file (Next.js only allows HTTP method exports).
-// Other routes import from '@/lib/mapping-store' instead.
-import { mappingStore } from '@/lib/mapping-store';
+import { saveMapping } from '@/lib/mapping-store';
+import { resolveOrgContext, orgFilter } from '@/lib/org-context';
 
 export async function POST(request: NextRequest) {
     try {
@@ -26,12 +24,19 @@ export async function POST(request: NextRequest) {
 
         const { upload_id, mapping_config, temporal_scale } = parsed.data;
 
+        let mappingOrgId: string | undefined;
+        try {
+            const ctx = await resolveOrgContext(request);
+            mappingOrgId = orgFilter(ctx) ?? undefined;
+        } catch { /* unauthenticated confirm still works */ }
+
         const mappingId = uuid();
-        mappingStore.set(mappingId, {
+        await saveMapping(request, mappingId, {
             upload_id,
             mapping_config,
             temporal_scale,
-        });
+            clarification_answers: parsed.data.clarification_answers ?? [],
+        }, mappingOrgId);
 
         return NextResponse.json({
             mapping_id: mappingId,

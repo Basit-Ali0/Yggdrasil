@@ -65,6 +65,8 @@ export async function GET(
                 policy_excerpt: r.policy_excerpt,
                 policy_section: r.policy_section,
                 is_active: r.is_active,
+                validation_status: r.validation_status ?? null,
+                validation_issues: r.validation_issues ?? null,
             })),
             created_at: policy.created_at,
             updated_at: policy.updated_at,

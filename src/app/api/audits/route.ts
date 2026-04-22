@@ -1,10 +1,11 @@
 // ============================================================
 // POST /api/audits — Create audit + load prebuilt policy
-// Response: { audit_id, policy_id, rules } per CONTRACTS.md
+// GET  /api/audits — List audits for the current org
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabaseForRequest, getUserIdFromRequest, AuthError } from '@/lib/supabase';
+import { AuthError } from '@/lib/supabase';
+import { resolveOrgContext, orgFilter } from '@/lib/org-context';
 import { CreateAuditSchema } from '@/lib/validators';
 import { AML_RULES, AML_POLICY_NAME } from '@/lib/policies/aml';
 import { GDPR_RULES, GDPR_POLICY_NAME } from '@/lib/policies/gdpr';
@@ -14,7 +15,7 @@ import type { Rule } from '@/lib/types';
 
 function getPolicyPack(policyType: string, selectedCategories?: string[]): { name: string; rules: Rule[] } {
     let pack: { name: string; rules: Rule[] };
-    
+
     switch (policyType) {
         case 'aml':
             pack = { name: AML_POLICY_NAME, rules: AML_RULES };
@@ -31,14 +32,51 @@ function getPolicyPack(policyType: string, selectedCategories?: string[]): { nam
             throw new Error(`No prebuilt policy pack for type: ${policyType}. Use the PDF extraction flow for custom policies.`);
     }
 
-    // Filter rules if categories are selected
     if (selectedCategories && selectedCategories.length > 0) {
-        pack.rules = pack.rules.filter(rule => 
+        pack.rules = pack.rules.filter(rule =>
             rule.category && selectedCategories.includes(rule.category)
         );
     }
 
     return pack;
+}
+
+export async function GET(request: NextRequest) {
+    try {
+        const ctx = await resolveOrgContext(request);
+        const org = orgFilter(ctx);
+
+        let query = ctx.supabase
+            .from('audits')
+            .select('id, name, status, policy_id, data_source, created_at, updated_at, latest_scan_id')
+            .order('updated_at', { ascending: false });
+
+        if (org) {
+            query = query.eq('organization_id', org);
+        } else {
+            query = query.eq('user_id', ctx.userId);
+        }
+
+        const { data: audits, error } = await query;
+
+        if (error) {
+            if (error.code === '42P01' || error.message?.includes('does not exist')) {
+                return NextResponse.json({ audits: [] });
+            }
+            return NextResponse.json(
+                { error: 'INTERNAL_ERROR', message: 'Failed to fetch audits' },
+                { status: 500 }
+            );
+        }
+
+        return NextResponse.json({ audits: audits ?? [] });
+    } catch (err) {
+        if (err instanceof AuthError) {
+            return NextResponse.json({ error: 'UNAUTHORIZED', message: err.message }, { status: 401 });
+        }
+        console.error('GET /api/audits error:', err);
+        return NextResponse.json({ error: 'INTERNAL_ERROR', message: 'Failed to fetch audits' }, { status: 500 });
+    }
 }
 
 export async function POST(request: NextRequest) {
@@ -54,24 +92,28 @@ export async function POST(request: NextRequest) {
         }
 
         const { name, policy_type, selected_categories } = parsed.data;
-        const userId = await getUserIdFromRequest(request);
-        const supabase = await getSupabaseForRequest(request);
+        const ctx = await resolveOrgContext(request);
+        const { supabase, userId } = ctx;
+        const org = orgFilter(ctx);
 
         const pack = getPolicyPack(policy_type, selected_categories);
 
         // 1. Create the policy record
         const policyId = uuid();
+        const policyRow: Record<string, unknown> = {
+            id: policyId,
+            user_id: userId,
+            name: pack.name,
+            type: 'prebuilt',
+            prebuilt_type: policy_type,
+            rules_count: pack.rules.length,
+            status: 'active',
+        };
+        if (org) policyRow.organization_id = org;
+
         const { error: policyError } = await supabase
             .from('policies')
-            .insert({
-                id: policyId,
-                user_id: userId,
-                name: pack.name,
-                type: 'prebuilt',
-                prebuilt_type: policy_type,
-                rules_count: pack.rules.length,
-                status: 'active',
-            });
+            .insert(policyRow);
 
         if (policyError) {
             console.error('Policy insert error:', policyError);
@@ -83,7 +125,6 @@ export async function POST(request: NextRequest) {
 
         // 2. Insert rules
         const ruleRows = pack.rules.map((rule) => {
-            // Repurpose description to store historical_context for MVP hackathon
             const enrichedDescription = JSON.stringify({
                 text: rule.description ?? null,
                 historical_context: rule.historical_context ?? null
@@ -118,8 +159,33 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // 3. Return per CONTRACTS.md: { audit_id, policy_id, rules }
-        const auditId = uuid(); // audit is a logical session, not a DB table for MVP
+        // 3. Create audit record (persisted lifecycle)
+        const auditId = uuid();
+        const auditRow: Record<string, unknown> = {
+            id: auditId,
+            user_id: userId,
+            name,
+            status: 'draft',
+            policy_id: policyId,
+            data_source: 'csv',
+        };
+        if (org) auditRow.organization_id = org;
+
+        const { error: auditError } = await supabase
+            .from('audits')
+            .insert(auditRow);
+
+        if (auditError) {
+            if (auditError.code === '42P01' || auditError.message?.includes('does not exist')) {
+                console.warn('Audit table not yet migrated — skipping insert');
+            } else {
+                console.error('Audit insert error:', auditError);
+                return NextResponse.json(
+                    { error: 'INTERNAL_ERROR', message: 'Failed to create audit record' },
+                    { status: 500 }
+                );
+            }
+        }
 
         return NextResponse.json({
             audit_id: auditId,
