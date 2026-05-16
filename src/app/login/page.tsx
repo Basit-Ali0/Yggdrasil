@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuthStore } from '@/stores/auth-store';
+import { safeNextPath } from '@/lib/auth-redirect';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -12,6 +13,7 @@ import { Shield, Loader2, AlertCircle } from 'lucide-react';
 
 export default function LoginPage() {
     const router = useRouter();
+    const searchParams = useSearchParams();
     const { signIn, isLoading, error, clearError } = useAuthStore();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -22,9 +24,11 @@ export default function LoginPage() {
         // If no error after sign in, redirect
         const currentError = useAuthStore.getState().error;
         if (!currentError) {
-            router.push('/audit/new');
+            router.push(safeNextPath(searchParams.get('next')));
         }
     };
+
+    const signupHref = `/signup${searchParams.get('next') ? `?next=${encodeURIComponent(searchParams.get('next')!)}` : ''}`;
 
     return (
         <div className="flex min-h-screen items-center justify-center bg-background p-4">
@@ -102,7 +106,7 @@ export default function LoginPage() {
 
                         <div className="mt-4 text-center text-sm text-muted-foreground">
                             Don&apos;t have an account?{' '}
-                            <Link href="/signup" className="text-primary hover:underline">
+                            <Link href={signupHref} className="text-primary hover:underline">
                                 Create Account
                             </Link>
                         </div>

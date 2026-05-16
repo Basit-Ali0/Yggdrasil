@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuthStore } from '@/stores/auth-store';
+import { safeNextPath } from '@/lib/auth-redirect';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -12,6 +13,7 @@ import { Shield, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 export default function SignupPage() {
     const router = useRouter();
+    const searchParams = useSearchParams();
     const { signUp, isLoading, error, clearError } = useAuthStore();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -38,11 +40,13 @@ export default function SignupPage() {
         if (result?.needsConfirmation) {
             setSuccess(true);
         } else if (!useAuthStore.getState().error) {
-            router.push('/audit/new');
+            router.push(safeNextPath(searchParams.get('next')));
         }
     };
 
     const displayError = localError || error;
+    const next = searchParams.get('next');
+    const loginHref = `/login${next ? `?next=${encodeURIComponent(next)}` : ''}`;
 
     if (success) {
         return (
@@ -58,7 +62,7 @@ export default function SignupPage() {
                                 We&apos;ve sent a confirmation link to <strong>{email}</strong>.
                                 Please check your inbox and click the link to activate your account.
                             </p>
-                            <Link href="/login">
+                            <Link href={loginHref}>
                                 <Button variant="outline">Back to Sign In</Button>
                             </Link>
                         </CardContent>
@@ -161,7 +165,7 @@ export default function SignupPage() {
 
                         <div className="mt-4 text-center text-sm text-muted-foreground">
                             Already have an account?{' '}
-                            <Link href="/login" className="text-primary hover:underline">
+                            <Link href={loginHref} className="text-primary hover:underline">
                                 Sign In
                             </Link>
                         </div>

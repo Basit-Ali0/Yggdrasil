@@ -127,6 +127,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                 session: null,
                 isLoading: false,
             });
+            const { useOrgStore } = await import('@/stores/org-store');
+            useOrgStore.getState().clear();
         } catch {
             set({ isLoading: false });
         }
