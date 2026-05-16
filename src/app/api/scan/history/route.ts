@@ -93,6 +93,9 @@ export async function GET(request: NextRequest) {
                     created_at: scan.created_at,
                     completed_at: scan.completed_at,
                     audit_name: scan.audit_name ?? null,
+                    data_source: scan.data_source ?? 'csv',
+                    connector_id: scan.connector_id ?? null,
+                    file_name: scan.file_name ?? null,
                 };
             })
         );

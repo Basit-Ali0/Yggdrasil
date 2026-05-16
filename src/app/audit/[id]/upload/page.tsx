@@ -4,21 +4,37 @@ import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuditStore } from '@/stores/audit-store';
 import { usePIIStore } from '@/stores/pii-store';
+import { api } from '@/lib/api';
+import type { Connector, ConnectorDiscoverResponse, ConnectorListResponse, ConnectorPreviewResponse, UploadDataResponse } from '@/lib/contracts';
 import { FileDropzone } from '@/components/ui-custom/file-dropzone';
 import { PIIAlertDialog } from '@/components/pii-alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
-import { ArrowRight, AlertCircle, Loader2, ShieldAlert } from 'lucide-react';
+import { ArrowRight, AlertCircle, Loader2, ShieldAlert, Database } from 'lucide-react';
 
 export default function DataUploadPage() {
     const router = useRouter();
     const params = useParams();
-    const { uploadCSV, uploadData, uploadId, isUploading, error, clearError } = useAuditStore();
+    const { auditId, uploadCSV, uploadData, uploadId, isUploading, error, clearError, setImportedUpload } = useAuditStore();
     const { isScanning, piiDetected, scanForPII, reset: resetPII } = usePIIStore();
     const [piiDialogOpen, setPiiDialogOpen] = useState(false);
+    const [connectors, setConnectors] = useState<Connector[]>([]);
+    const [selectedConnectorId, setSelectedConnectorId] = useState('');
+    const [connectorSelection, setConnectorSelection] = useState('');
+    const [discovered, setDiscovered] = useState<ConnectorDiscoverResponse | null>(null);
+    const [preview, setPreview] = useState<ConnectorPreviewResponse | null>(null);
+    const [connectorBusy, setConnectorBusy] = useState(false);
+
+    useEffect(() => {
+        api.get<ConnectorListResponse>('/connectors')
+            .then((data) => setConnectors(data.connectors.filter((connector) => connector.status === 'active')))
+            .catch(() => setConnectors([]));
+    }, []);
 
     // Auto-open PII dialog when detection completes with findings
     useEffect(() => {
@@ -43,6 +59,65 @@ export default function DataUploadPage() {
         router.push(`/audit/${params.id}/rules`);
     };
 
+    const selectedConnector = connectors.find((connector) => connector.id === selectedConnectorId) ?? null;
+    const connectorOptions =
+        selectedConnector?.type === 'postgres'
+            ? discovered?.schemas?.flatMap((schema) => schema.tables.map((table) => `${schema.name}.${table}`)) ?? []
+            : discovered?.files?.map((file) => file.key) ?? [];
+
+    const discoverConnector = async () => {
+        if (!selectedConnector) return;
+        setConnectorBusy(true);
+        setPreview(null);
+        try {
+            const data = await api.post<ConnectorDiscoverResponse>(`/connectors/${selectedConnector.id}/discover`);
+            setDiscovered(data);
+            setConnectorSelection('');
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Discovery failed');
+        } finally {
+            setConnectorBusy(false);
+        }
+    };
+
+    const previewConnector = async () => {
+        if (!selectedConnector || !connectorSelection) return;
+        setConnectorBusy(true);
+        try {
+            const body = selectedConnector.type === 'postgres'
+                ? { table: connectorSelection, limit: 20 }
+                : { key: connectorSelection, limit: 20 };
+            setPreview(await api.post<ConnectorPreviewResponse>(`/connectors/${selectedConnector.id}/preview`, body));
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Preview failed');
+        } finally {
+            setConnectorBusy(false);
+        }
+    };
+
+    const importConnector = async () => {
+        if (!selectedConnector || !connectorSelection || !auditId) return;
+        setConnectorBusy(true);
+        clearError();
+        resetPII();
+        try {
+            const body = selectedConnector.type === 'postgres'
+                ? { table: connectorSelection, audit_id: auditId }
+                : { key: connectorSelection, audit_id: auditId };
+            const data = await api.post<UploadDataResponse & { source: string; connector_id: string }>(
+                `/connectors/${selectedConnector.id}/import`,
+                body,
+            );
+            await setImportedUpload(data, { dataSource: data.source, connectorId: data.connector_id });
+            toast.success('Data imported', { description: `${data.row_count.toLocaleString()} rows are ready for mapping.` });
+            scanForPII(data.upload_id);
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Import failed');
+        } finally {
+            setConnectorBusy(false);
+        }
+    };
+
     return (
         <div className="animate-fade-in-up space-y-8">
             <div>
@@ -59,16 +134,79 @@ export default function DataUploadPage() {
                 </div>
             )}
 
-            {/* Dropzone */}
-            <FileDropzone
-                accept=".csv"
-                maxSizeMB={50}
-                onFile={handleFile}
-                isUploading={isUploading}
-                error={error}
-                label="Drop your CSV file here"
-                description="Supports CSV files up to 50MB"
-            />
+            <Tabs defaultValue="csv">
+                <TabsList>
+                    <TabsTrigger value="csv">CSV Upload</TabsTrigger>
+                    <TabsTrigger value="connector">Connector Import</TabsTrigger>
+                </TabsList>
+                <TabsContent value="csv" className="mt-4">
+                    <FileDropzone
+                        accept=".csv"
+                        maxSizeMB={50}
+                        onFile={handleFile}
+                        isUploading={isUploading}
+                        error={error}
+                        label="Drop your CSV file here"
+                        description="Supports CSV files up to 50MB"
+                    />
+                </TabsContent>
+                <TabsContent value="connector" className="mt-4">
+                    <Card>
+                        <CardHeader className="pb-3">
+                            <CardTitle className="flex items-center gap-2 text-base">
+                                <Database className="h-4 w-4" /> Import from connector
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="flex flex-wrap gap-2">
+                                <Select value={selectedConnectorId} onValueChange={(value) => {
+                                    setSelectedConnectorId(value);
+                                    setDiscovered(null);
+                                    setPreview(null);
+                                    setConnectorSelection('');
+                                }}>
+                                    <SelectTrigger className="w-72"><SelectValue placeholder="Select connector" /></SelectTrigger>
+                                    <SelectContent>
+                                        {connectors.map((connector) => (
+                                            <SelectItem key={connector.id} value={connector.id}>
+                                                {connector.name} ({connector.type === 'postgres' ? 'Postgres' : 'S3 CSV'})
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <Button variant="outline" onClick={discoverConnector} disabled={!selectedConnector || connectorBusy}>
+                                    {connectorBusy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Discover
+                                </Button>
+                                <Select value={connectorSelection} onValueChange={setConnectorSelection}>
+                                    <SelectTrigger className="w-80"><SelectValue placeholder="Select table or CSV file" /></SelectTrigger>
+                                    <SelectContent>
+                                        {connectorOptions.map((option) => <SelectItem key={option} value={option}>{option}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                                <Button variant="outline" onClick={previewConnector} disabled={!connectorSelection || connectorBusy}>Preview</Button>
+                                <Button onClick={importConnector} disabled={!connectorSelection || connectorBusy}>Import</Button>
+                            </div>
+                            {connectors.length === 0 && (
+                                <p className="text-sm text-muted-foreground">No active connectors found. Add one from the Connectors page.</p>
+                            )}
+                            {preview && (
+                                <div className="overflow-x-auto rounded-md border">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow>{preview.headers.map((header) => <TableHead key={header}>{header}</TableHead>)}</TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {preview.rows.slice(0, 5).map((row, index) => (
+                                                <TableRow key={index}>{preview.headers.map((header) => <TableCell key={header}>{String(row[header] ?? '')}</TableCell>)}</TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                            )}
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+            </Tabs>
             {/* Upload Success */}
             {uploadData && (
                 <div className="space-y-4 animate-fade-in-up">

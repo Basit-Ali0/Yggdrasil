@@ -14,6 +14,12 @@ import { History, Plus, ArrowRight, Trash2, Loader2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
+function sourceLabel(source?: string) {
+    if (source === 'postgres') return 'Postgres';
+    if (source === 's3_csv') return 'S3 CSV';
+    return 'CSV upload';
+}
+
 export default function HistoryPage() {
     const router = useRouter();
     const { scanHistory, fetchHistory, isLoadingHistory, deleteScan } = useScanStore();
@@ -87,6 +93,7 @@ export default function HistoryPage() {
                                         <TableHead>Scan ID</TableHead>
                                         <TableHead>Score</TableHead>
                                         <TableHead>Violations</TableHead>
+                                        <TableHead>Source</TableHead>
                                         <TableHead>Status</TableHead>
                                         <TableHead className="text-right" />
                                     </TableRow>
@@ -131,6 +138,18 @@ export default function HistoryPage() {
                                                 <Badge variant="secondary">
                                                     {scan.violation_count ?? 0}
                                                 </Badge>
+                                            </TableCell>
+                                            <TableCell>
+                                                <div className="flex flex-col gap-1">
+                                                    <Badge variant="outline" className="w-fit">
+                                                        {sourceLabel(scan.data_source)}
+                                                    </Badge>
+                                                    {scan.file_name && (
+                                                        <span className="max-w-40 truncate text-xs text-muted-foreground">
+                                                            {scan.file_name}
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </TableCell>
                                             <TableCell>
                                                 <Badge

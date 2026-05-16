@@ -8,6 +8,7 @@ import { AuthError } from '@/lib/supabase';
 import { resolveOrgContext, orgFilter } from '@/lib/org-context';
 import { decryptCredentials } from '@/lib/connector-crypto';
 import { saveUpload } from '@/lib/upload-store';
+import { detectDataset, getDefaultMapping, getDefaultMappingWithConfidence, getTemporalScale } from '@/lib/engine/schema-adapter';
 import { v4 as uuid } from 'uuid';
 
 export async function POST(
@@ -58,6 +59,15 @@ export async function POST(
         }
 
         const uploadId = uuid();
+        const detectedDataset = detectDataset(headers);
+        const suggestedMapping = getDefaultMapping(detectedDataset);
+        const mappingConfidence = Object.fromEntries(
+            Object.entries(getDefaultMappingWithConfidence(detectedDataset)).map(
+                ([field, value]) => [field, value.confidence],
+            ),
+        );
+        const temporalScale = getTemporalScale(detectedDataset);
+
         try {
             await saveUpload(request, uploadId, { rows, headers, fileName }, org ?? undefined);
         } catch (saveErr) {
@@ -84,6 +94,12 @@ export async function POST(
             upload_id: uploadId,
             row_count: totalRows,
             headers,
+            sample_rows: rows.slice(0, 5),
+            detected_dataset: detectedDataset,
+            suggested_mapping: suggestedMapping,
+            mapping_confidence: mappingConfidence,
+            temporal_scale: temporalScale,
+            clarification_questions: [],
             file_name: fileName,
             source: connector.type,
             connector_id: id,
