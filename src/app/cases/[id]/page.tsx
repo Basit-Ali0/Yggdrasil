@@ -2,6 +2,8 @@
 
 import { useEffect, useState, useCallback, use } from 'react';
 import { api } from '@/lib/api';
+import { useViolationStore } from '@/stores/violation-store';
+import { EvidenceDrawer } from '@/components/evidence-drawer';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -28,6 +30,7 @@ interface CaseViolation {
     amount: number;
     status: string;
     explanation: string;
+    review_note?: string | null;
 }
 
 interface CaseTimelineEvent {
@@ -71,6 +74,12 @@ interface CaseDetail {
     review_summary: { total: number; pending: number; approved: number; false_positive: number };
     sar_ready: boolean;
     sar_analyst_summary: string | null;
+    sar_date_range_start: string | null;
+    sar_date_range_end: string | null;
+    sar_flagged_amount: number | null;
+    sar_involved_accounts: string[] | null;
+    sar_counterparties: string[] | null;
+    sar_supporting_triggers: Array<{ rule_id: string; rule_name: string; count: number }> | null;
 }
 
 const STATUS_OPTIONS = [
@@ -95,6 +104,11 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
     const [loading, setLoading] = useState(true);
     const [noteText, setNoteText] = useState('');
     const [saving, setSaving] = useState(false);
+    const [selectedViolationId, setSelectedViolationId] = useState<string | null>(null);
+    const [drawerOpen, setDrawerOpen] = useState(false);
+    const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
+    const [selectedViolationIds, setSelectedViolationIds] = useState<Set<string>>(new Set());
+    const { reviewViolation } = useViolationStore();
 
     const loadCase = useCallback(async () => {
         setLoading(true);
@@ -155,6 +169,49 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
         } finally {
             setSaving(false);
         }
+    }
+
+    async function reviewCaseViolation(violationId: string, status: 'approved' | 'false_positive') {
+        setSaving(true);
+        try {
+            await reviewViolation(violationId, {
+                status,
+                review_note: reviewNotes[violationId]?.trim() || undefined,
+            });
+            toast.success(status === 'approved' ? 'Violation approved' : 'Marked false positive');
+            await loadCase();
+        } catch {
+            toast.error('Failed to review violation');
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    async function bulkReview(status: 'approved' | 'false_positive') {
+        const ids = [...selectedViolationIds];
+        if (ids.length === 0) return;
+        setSaving(true);
+        try {
+            for (const violationId of ids) {
+                await reviewViolation(violationId, { status });
+            }
+            setSelectedViolationIds(new Set());
+            toast.success(`${ids.length} violation${ids.length !== 1 ? 's' : ''} reviewed`);
+            await loadCase();
+        } catch {
+            toast.error('Bulk review failed');
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    function toggleSelectedViolation(violationId: string) {
+        setSelectedViolationIds((current) => {
+            const next = new Set(current);
+            if (next.has(violationId)) next.delete(violationId);
+            else next.add(violationId);
+            return next;
+        });
     }
 
     if (loading || !caseData) {
@@ -265,6 +322,20 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                 )}
             </div>
 
+            {!c.sar_ready && (
+                <Card className="border-amber-200 bg-amber-50/50 dark:border-amber-900 dark:bg-amber-950/20">
+                    <CardContent className="pt-4 text-sm">
+                        <p className="font-medium">SAR readiness checklist</p>
+                        <p className="mt-1 text-muted-foreground">
+                            {!c.owner_id && 'Owner required. '}
+                            {!c.disposition && 'Disposition required. '}
+                            {!c.narrative && 'Narrative required. '}
+                            {c.review_summary.pending > 0 && `${c.review_summary.pending} pending violation${c.review_summary.pending !== 1 ? 's' : ''} must be reviewed.`}
+                        </p>
+                    </CardContent>
+                </Card>
+            )}
+
             {/* Rule families / grouped evidence (P3-25) */}
             {c.grouped_evidence.length > 0 && (
                 <Card>
@@ -304,17 +375,35 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
             {/* Violations */}
             <Card>
                 <CardHeader className="pb-2">
-                    <CardTitle className="text-base">
-                        Linked Violations ({c.review_summary.total})
-                        <span className="ml-2 text-xs font-normal text-muted-foreground">
-                            {c.review_summary.approved} approved &middot; {c.review_summary.false_positive} FP &middot; {c.review_summary.pending} pending
-                        </span>
-                    </CardTitle>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <CardTitle className="text-base">
+                            Linked Violations ({c.review_summary.total})
+                            <span className="ml-2 text-xs font-normal text-muted-foreground">
+                                {c.review_summary.approved} approved &middot; {c.review_summary.false_positive} FP &middot; {c.review_summary.pending} pending
+                            </span>
+                        </CardTitle>
+                        <div className="flex gap-2">
+                            <Button size="sm" variant="outline" disabled={saving || selectedViolationIds.size === 0} onClick={() => bulkReview('false_positive')}>
+                                Mark Selected FP
+                            </Button>
+                            <Button size="sm" disabled={saving || selectedViolationIds.size === 0} onClick={() => bulkReview('approved')}>
+                                Approve Selected
+                            </Button>
+                        </div>
+                    </div>
                 </CardHeader>
                 <CardContent>
                     <div className="space-y-2 max-h-96 overflow-y-auto">
                         {c.violations.map((v) => (
-                            <div key={v.id} className="flex items-start gap-3 rounded border px-3 py-2">
+                            <div key={v.id} className="rounded border px-3 py-2">
+                                <div className="flex items-start gap-3">
+                                <input
+                                    type="checkbox"
+                                    className="mt-1"
+                                    checked={selectedViolationIds.has(v.id)}
+                                    onChange={() => toggleSelectedViolation(v.id)}
+                                    aria-label={`Select ${v.rule_name}`}
+                                />
                                 {v.status === 'pending' ? (
                                     <Clock className="h-4 w-4 mt-0.5 text-yellow-500 shrink-0" />
                                 ) : v.status === 'approved' ? (
@@ -332,6 +421,27 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                                 <span className="text-sm font-mono whitespace-nowrap">
                                     {formatAmount(Number(v.amount ?? 0))}
                                 </span>
+                                </div>
+                                <div className="mt-2 flex flex-wrap items-center gap-2 pl-10">
+                                    <Textarea
+                                        value={reviewNotes[v.id] ?? ''}
+                                        onChange={(e) => setReviewNotes({ ...reviewNotes, [v.id]: e.target.value })}
+                                        placeholder="Review note..."
+                                        className="min-h-[38px] flex-1"
+                                    />
+                                    <Button size="sm" variant="outline" onClick={() => {
+                                        setSelectedViolationId(v.id);
+                                        setDrawerOpen(true);
+                                    }}>
+                                        Evidence
+                                    </Button>
+                                    <Button size="sm" variant="outline" disabled={saving} onClick={() => reviewCaseViolation(v.id, 'false_positive')}>
+                                        False Positive
+                                    </Button>
+                                    <Button size="sm" disabled={saving} onClick={() => reviewCaseViolation(v.id, 'approved')}>
+                                        Approve
+                                    </Button>
+                                </div>
                             </div>
                         ))}
                     </div>
@@ -354,6 +464,55 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                         onClick={() => updateCase({ narrative: c.narrative })}
                     >
                         Save Narrative
+                    </Button>
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader className="pb-2"><CardTitle className="text-base">SAR Prep Fields</CardTitle></CardHeader>
+                <CardContent className="grid gap-3 md:grid-cols-2">
+                    <Textarea
+                        value={c.sar_analyst_summary ?? ''}
+                        onChange={(e) => setCaseData({ ...c, sar_analyst_summary: e.target.value })}
+                        placeholder="Analyst summary"
+                        className="md:col-span-2"
+                    />
+                    <input
+                        type="date"
+                        className="h-10 rounded-md border bg-background px-3 text-sm"
+                        value={c.sar_date_range_start ?? ''}
+                        onChange={(e) => setCaseData({ ...c, sar_date_range_start: e.target.value })}
+                    />
+                    <input
+                        type="date"
+                        className="h-10 rounded-md border bg-background px-3 text-sm"
+                        value={c.sar_date_range_end ?? ''}
+                        onChange={(e) => setCaseData({ ...c, sar_date_range_end: e.target.value })}
+                    />
+                    <Textarea
+                        value={(c.sar_involved_accounts ?? []).join(', ')}
+                        onChange={(e) => setCaseData({ ...c, sar_involved_accounts: e.target.value.split(',').map((x) => x.trim()).filter(Boolean) })}
+                        placeholder="Involved accounts, comma separated"
+                    />
+                    <Textarea
+                        value={(c.sar_counterparties ?? []).join(', ')}
+                        onChange={(e) => setCaseData({ ...c, sar_counterparties: e.target.value.split(',').map((x) => x.trim()).filter(Boolean) })}
+                        placeholder="Counterparties, comma separated"
+                    />
+                    <Button
+                        className="md:col-span-2"
+                        disabled={saving}
+                        onClick={() => updateCase({
+                            sar_analyst_summary: c.sar_analyst_summary,
+                            sar_date_range_start: c.sar_date_range_start,
+                            sar_date_range_end: c.sar_date_range_end,
+                            sar_involved_accounts: c.sar_involved_accounts ?? [],
+                            sar_counterparties: c.sar_counterparties ?? [],
+                            sar_supporting_triggers: c.grouped_evidence.map((g) => ({ rule_id: g.rule_id, rule_name: g.rule_name, count: g.count })),
+                            sar_flagged_amount: c.suspicious_amount,
+                        })}
+                    >
+                        Save SAR Fields
                     </Button>
                 </CardContent>
             </Card>
@@ -407,6 +566,12 @@ export default function CaseDetailPage({ params }: { params: Promise<{ id: strin
                     )}
                 </CardContent>
             </Card>
+
+            <EvidenceDrawer
+                violationId={selectedViolationId}
+                open={drawerOpen}
+                onOpenChange={setDrawerOpen}
+            />
         </div>
     );
 }

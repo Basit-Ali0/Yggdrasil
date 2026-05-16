@@ -25,6 +25,11 @@ function isAmlRule(ruleId: string): boolean {
     return AML_RULE_PATTERNS.some(p => upper.includes(p));
 }
 
+function isAiProviderUnavailable(error: unknown): boolean {
+    const text = error instanceof Error ? error.message : String(error);
+    return /CONSUMER_SUSPENDED|PERMISSION_DENIED|API key|api_key|403/i.test(text);
+}
+
 // ── Zod schema for Gemini structured output ─────────────────
 const RemediationStepSchema = z.object({
     title: z.string(),
@@ -148,7 +153,16 @@ Generate 2-4 concrete remediation steps with code. Focus on the most impactful f
                 { status: 401 }
             );
         }
-        console.error('POST /api/violations/[id]/remediation error:', err);
+        if (isAiProviderUnavailable(err)) {
+            return NextResponse.json(
+                {
+                    error: 'AI_PROVIDER_UNAVAILABLE',
+                    message: 'AI remediation is unavailable because the Gemini API key is invalid, suspended, or lacks access. Update GEMINI_API_KEY and try again.',
+                },
+                { status: 503 }
+            );
+        }
+        console.error('POST /api/violations/[id]/remediation error:', err instanceof Error ? err.message : err);
         return NextResponse.json(
             { error: 'INTERNAL_ERROR', message: 'Failed to generate remediation. Please try again.' },
             { status: 500 }
