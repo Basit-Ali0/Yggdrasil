@@ -91,12 +91,73 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        const { name, policy_type, selected_categories } = parsed.data;
+        const { name, policy_type, policy_id, selected_categories } = parsed.data;
         const ctx = await resolveOrgContext(request);
         const { supabase, userId } = ctx;
         const org = orgFilter(ctx);
 
-        const pack = getPolicyPack(policy_type, selected_categories);
+        if (policy_id) {
+            let policyQuery = supabase
+                .from('policies')
+                .select('id, name, type, prebuilt_type, rules_count')
+                .eq('id', policy_id);
+            if (org) policyQuery = policyQuery.eq('organization_id', org);
+            else policyQuery = policyQuery.eq('user_id', userId);
+
+            const { data: existingPolicy, error: policyFetchError } = await policyQuery.single();
+            if (policyFetchError || !existingPolicy) {
+                return NextResponse.json(
+                    { error: 'NOT_FOUND', message: 'Policy not found' },
+                    { status: 404 },
+                );
+            }
+
+            const auditId = uuid();
+            const auditRow: Record<string, unknown> = {
+                id: auditId,
+                user_id: userId,
+                name,
+                status: 'draft',
+                policy_id,
+                data_source: 'csv',
+            };
+            if (org) auditRow.organization_id = org;
+
+            const { error: auditError } = await supabase.from('audits').insert(auditRow);
+            if (auditError) {
+                return NextResponse.json(
+                    { error: 'INTERNAL_ERROR', message: 'Failed to create audit record' },
+                    { status: 500 },
+                );
+            }
+
+            const { data: rules } = await supabase
+                .from('rules')
+                .select('*')
+                .eq('policy_id', policy_id)
+                .order('created_at', { ascending: true });
+
+            return NextResponse.json({
+                audit_id: auditId,
+                policy_id,
+                rules: (rules ?? []).map((rule: any) => ({
+                    rule_id: rule.rule_id,
+                    name: rule.name,
+                    type: rule.type,
+                    severity: rule.severity,
+                    threshold: rule.threshold != null && rule.threshold !== '' ? parseFloat(String(rule.threshold)) : null,
+                    time_window: rule.time_window,
+                    conditions: rule.conditions,
+                    policy_excerpt: rule.policy_excerpt,
+                    policy_section: rule.policy_section,
+                    is_active: rule.is_active,
+                    validation_status: rule.validation_status ?? null,
+                    validation_issues: rule.validation_issues ?? null,
+                })),
+            }, { status: 201 });
+        }
+
+        const pack = getPolicyPack(policy_type!, selected_categories);
 
         // 1. Create the policy record
         const policyId = uuid();

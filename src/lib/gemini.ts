@@ -13,6 +13,13 @@ async function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+export function redactSecrets(value: unknown): string {
+    const text = value instanceof Error ? value.message : String(value);
+    return text
+        .replace(/AIza[0-9A-Za-z_-]{20,}/g, '[REDACTED_GEMINI_API_KEY]')
+        .replace(/(["']?api_key["']?\s*[:=]\s*)["']?[^'"\s,)]+["']?/gi, '$1[REDACTED]');
+}
+
 export async function withRetry<T>(
     fn: () => Promise<T>,
     options: { maxRetries: number; baseDelay: number } = {
@@ -28,7 +35,7 @@ export async function withRetry<T>(
             const delay = options.baseDelay * Math.pow(2, attempt);
             console.warn(
                 `[Gemini] Attempt ${attempt + 1} failed, retrying in ${delay}ms...`,
-                error instanceof Error ? error.message : error
+                redactSecrets(error)
             );
             await sleep(delay);
         }
@@ -121,7 +128,7 @@ export async function geminiGenerateObject<T extends z.ZodType>(opts: {
             } catch (error: any) {
                 // Exhaustive logging for Vercel AI SDK / Zod validation errors
                 console.error(`[GEMINI] Validation Error Detail:`);
-                if (error.text) console.error(`  - Raw Response Text: ${error.text}`);
+                if (error.text) console.error(`  - Raw Response Text: ${redactSecrets(error.text)}`);
                 if (error.partialObject) console.error(`  - Partial Object Parsed:`, JSON.stringify(error.partialObject, null, 2));
                 if (error.warnings) console.error(`  - Warnings:`, JSON.stringify(error.warnings, null, 2));
                 
@@ -139,7 +146,7 @@ export async function geminiGenerateObject<T extends z.ZodType>(opts: {
         geminiBreaker.recordSuccess();
         return result as z.infer<T>;
     } catch (error) {
-        console.error(`[GEMINI] Call failed after retries:`, error instanceof Error ? error.message : error);
+        console.error(`[GEMINI] Call failed after retries:`, redactSecrets(error));
         geminiBreaker.recordFailure();
         throw error;
     }

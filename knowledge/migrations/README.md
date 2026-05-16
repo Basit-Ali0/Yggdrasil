@@ -13,6 +13,8 @@ Apply **in filename order** in your Supabase SQL editor (or `psql`).
 | 7 | `2026-04-04-p2-04-export-logs.sql` | P2 | `export_logs` table with org-scoped RLS |
 | 8 | `2026-04-04-p2-05-connectors.sql` | P2 | `connectors` table (Postgres + S3); credential storage as AES-256-GCM encrypted BYTEA |
 | 9 | `2026-04-04-p3-01-cases.sql` | P3 | `cases`, `case_events` tables; `case_id` on violations; SAR-prep fields; RLS |
+| 10 | `2026-05-15-saas-org-management.sql` | SaaS orgs | Multi-org invitations, org events, ownership helpers; includes the org RLS helper functions needed by later policies |
+| 11 | `2026-05-16-fix-org-events-insert-rls.sql` | SaaS orgs | Follow-up policy correction for databases that already applied the May 15 SaaS org migration |
 
 ## Notes
 
@@ -23,6 +25,7 @@ Apply **in filename order** in your Supabase SQL editor (or `psql`).
 - After migration **8**, set the `YGG_CONNECTOR_SECRET` env var (32-byte hex key).
 - Until migration **4** is applied, the app gracefully falls back to user-only scoping.
 - Until migration **9** is applied, AML scans work normally but skip case auto-creation.
+- Migration **10** is self-contained for org RLS helper functions and can be applied after the base P2 org migration; the April 29 recursion fix remains compatible but is not required first.
 
 ---
 

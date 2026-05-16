@@ -56,7 +56,8 @@ async function fetchWithRetry(
 
 function getOrgId(): string | null {
     try {
-        return useOrgStore.getState().currentOrg?.id ?? null;
+        const state = useOrgStore.getState();
+        return state.currentOrg?.id ?? state.selectedOrgId ?? null;
     } catch {
         return null;
     }

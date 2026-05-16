@@ -46,6 +46,7 @@ interface AuditState {
     createAudit: (req: CreateAuditRequest) => Promise<void>;
     loadAudit: (auditId: string) => Promise<void>;
     uploadCSV: (file: File) => Promise<void>;
+    setImportedUpload: (data: UploadDataResponse, source?: { dataSource?: string; connectorId?: string }) => Promise<void>;
     confirmMapping: (req: Omit<ConfirmMappingRequest, 'upload_id'>) => Promise<void>;
     startScan: () => Promise<string>;
     setStep: (step: AuditStep) => void;
@@ -104,7 +105,7 @@ export const useAuditStore = create<AuditState>((set, get) => ({
                 policyId: data.policy_id,
                 rules: data.rules,
                 auditName: req.name,
-                policyType: req.policy_type,
+                policyType: req.policy_type ?? null,
                 step: 'upload',
                 isCreating: false,
             });
@@ -180,6 +181,8 @@ export const useAuditStore = create<AuditState>((set, get) => ({
             set({
                 uploadId: data.upload_id,
                 uploadData: data,
+                mappingId: null,
+                scanId: null,
                 step: 'rules',
                 isUploading: false,
             });
@@ -189,6 +192,27 @@ export const useAuditStore = create<AuditState>((set, get) => ({
                 isUploading: false,
             });
         }
+    },
+
+    setImportedUpload: async (data, source) => {
+        const { auditId } = get();
+        if (auditId) {
+            try {
+                await api.patch(`/audits/${auditId}`, {
+                    upload_id: data.upload_id,
+                    data_source: source?.dataSource ?? 'csv',
+                    connector_id: source?.connectorId ?? null,
+                });
+            } catch { /* audit table may not exist yet */ }
+        }
+
+        set({
+            uploadId: data.upload_id,
+            uploadData: data,
+            mappingId: null,
+            scanId: null,
+            step: 'rules',
+        });
     },
 
     confirmMapping: async (req) => {

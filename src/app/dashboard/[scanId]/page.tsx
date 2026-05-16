@@ -24,7 +24,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-import { ShieldAlert, AlertTriangle, Users, ChevronDown, ArrowRight, Settings2, RefreshCw, X, Check } from 'lucide-react';
+import { ShieldAlert, AlertTriangle, Users, ChevronDown, ArrowRight, Settings2, RefreshCw, X, Check, Database } from 'lucide-react';
 import type { ViolationCase, ScanStatusResponse } from '@/lib/contracts';
 
 // -- Aggregation types --
@@ -122,6 +122,12 @@ function buildAggregation(cases: ViolationCase[]): SeverityGroup[] {
     return groups;
 }
 
+function sourceLabel(source?: string) {
+    if (source === 'postgres') return 'Postgres';
+    if (source === 's3_csv') return 'S3 CSV';
+    return 'CSV upload';
+}
+
 export default function DashboardPage() {
     const params = useParams();
     const scanId = params.scanId as string;
@@ -201,6 +207,17 @@ export default function DashboardPage() {
                     <p className="mt-1 text-muted-foreground">
                         Scan results and compliance score for your audit.
                     </p>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <Badge variant="outline" className="gap-1.5">
+                            <Database className="h-3 w-3" />
+                            {sourceLabel(currentScan?.data_source)}
+                        </Badge>
+                        {currentScan?.file_name && (
+                            <Badge variant="secondary" className="max-w-64 truncate" title={currentScan.file_name}>
+                                {currentScan.file_name}
+                            </Badge>
+                        )}
+                    </div>
                 </div>
                 <div className="flex items-center gap-2">
                     {policyId && (

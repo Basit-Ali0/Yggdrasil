@@ -22,6 +22,8 @@ import { Rule } from '@/lib/types';
 import { logStructured } from '@/lib/structured-log';
 import { generateCases, isAmlPolicyType, type ViolationForCase } from '@/lib/case-generation';
 
+const MAX_CASES_PER_SCAN = 500;
+
 export async function POST(request: NextRequest) {
     let scanId: string | undefined;
     let supabaseRef: Awaited<ReturnType<typeof resolveOrgContext>>['supabase'] | undefined;
@@ -350,8 +352,11 @@ export async function POST(request: NextRequest) {
                     }
                 }
 
-                const generatedCases = generateCases(violationsForCases, existingSubjects);
+                const allGeneratedCases = generateCases(violationsForCases, existingSubjects);
+                const generatedCases = allGeneratedCases.slice(0, MAX_CASES_PER_SCAN);
                 const persistedSubjects = new Set<string>();
+                const caseRows: Record<string, unknown>[] = [];
+                const generatedCaseById = new Map<string, typeof generatedCases[number]>();
 
                 for (const generatedCase of generatedCases) {
                     const caseRow: Record<string, unknown> = {
@@ -371,28 +376,93 @@ export async function POST(request: NextRequest) {
                     if (org) caseRow.organization_id = org;
                     if (audit_id) caseRow.audit_id = audit_id;
 
-                    const { error: caseErr } = await supabase.from('cases').insert(caseRow);
+                    caseRows.push(caseRow);
+                    generatedCaseById.set(generatedCase.id, generatedCase);
+                }
+
+                const caseBatchSize = 250;
+                let caseInsertMissingTable = false;
+                const persistedCaseIds = new Set<string>();
+                for (let i = 0; i < caseRows.length; i += caseBatchSize) {
+                    const batch = caseRows.slice(i, i + caseBatchSize);
+                    const { data: insertedCases, error: caseErr } = await supabase
+                        .from('cases')
+                        .insert(batch)
+                        .select('id, subject_key');
                     if (caseErr) {
                         if (caseErr.code === '42P01' || caseErr.message?.includes('does not exist')) {
+                            caseInsertMissingTable = true;
                             break;
                         }
-                        console.error('Case insert error:', caseErr);
-                        continue;
+                        console.error('Case batch insert error:', caseErr);
+                    } else {
+                        for (const insertedCase of insertedCases ?? []) {
+                            persistedCaseIds.add(insertedCase.id);
+                            persistedSubjects.add(insertedCase.subject_key);
+                        }
+                        casesCreated += insertedCases?.length ?? 0;
+                    }
+                }
+
+                if (!caseInsertMissingTable && casesCreated > 0) {
+                    const eventRows = [...persistedCaseIds]
+                        .map((caseId) => {
+                            const generatedCase = generatedCaseById.get(caseId);
+                            if (!generatedCase) return null;
+                            return {
+                                case_id: caseId,
+                                event_type: 'created',
+                                actor_id: userId,
+                                payload: {
+                                    subject_key: generatedCase.subject_key,
+                                    violation_count: generatedCase.violation_count,
+                                    severity_rollup: generatedCase.severity_rollup,
+                                },
+                            };
+                        })
+                        .filter((row): row is NonNullable<typeof row> => row != null);
+
+                    for (let i = 0; i < eventRows.length; i += caseBatchSize) {
+                        const { error: eventErr } = await supabase
+                            .from('case_events')
+                            .insert(eventRows.slice(i, i + caseBatchSize));
+                        if (eventErr && eventErr.code !== '42P01') {
+                            console.error('Case event batch insert error:', eventErr);
+                        }
                     }
 
-                    casesCreated++;
-                    persistedSubjects.add(generatedCase.subject_key);
+                    const linkConcurrency = 20;
+                    const violationCaseLinks = [...persistedCaseIds]
+                        .map((caseId) => {
+                            const generatedCase = generatedCaseById.get(caseId);
+                            return generatedCase
+                                ? { caseId, violationIds: generatedCase.violation_ids }
+                                : null;
+                        })
+                        .filter((link): link is NonNullable<typeof link> => link != null);
 
-                    await supabase.from('violations').update({ case_id: generatedCase.id }).in('id', generatedCase.violation_ids);
-                    await supabase.from('case_events').insert({
-                        case_id: generatedCase.id,
-                        event_type: 'created',
-                        actor_id: userId,
-                        payload: {
-                            subject_key: generatedCase.subject_key,
-                            violation_count: generatedCase.violation_count,
-                            severity_rollup: generatedCase.severity_rollup,
-                        },
+                    for (let i = 0; i < violationCaseLinks.length; i += linkConcurrency) {
+                        await Promise.all(
+                            violationCaseLinks.slice(i, i + linkConcurrency).map((link) =>
+                                supabase
+                                    .from('violations')
+                                    .update({ case_id: link.caseId })
+                                    .in('id', link.violationIds)
+                                    .then(({ error }) => {
+                                        if (error) {
+                                            console.error('Violation case link error:', error);
+                                        }
+                                    })
+                            )
+                        );
+                    }
+                }
+
+                if (allGeneratedCases.length > generatedCases.length) {
+                    logStructured('scan/run', 'case_generation_capped', {
+                        scan_id: scanId,
+                        generated_case_count: allGeneratedCases.length,
+                        persisted_case_limit: MAX_CASES_PER_SCAN,
                     });
                 }
 
