@@ -14,6 +14,17 @@ export interface OrgContext {
     supabase: Awaited<ReturnType<typeof getSupabaseForRequest>>;
 }
 
+export interface OrgMembership {
+    organization_id: string;
+    role: OrgRole;
+    organizations: {
+        id: string;
+        name: string;
+        slug: string;
+        created_at: string;
+    } | null;
+}
+
 /**
  * Resolve the authenticated user's current organization and role.
  *
@@ -65,6 +76,49 @@ export async function resolveOrgContext(request: NextRequest): Promise<OrgContex
         organizationId: membership.organization_id,
         role: membership.role as OrgRole,
         supabase,
+    };
+}
+
+export async function getOrgMembershipsForRequest(
+    request: NextRequest,
+): Promise<{
+    supabase: Awaited<ReturnType<typeof getSupabaseForRequest>>;
+    userId: string;
+    requestedOrgId: string | null;
+    memberships: OrgMembership[];
+}> {
+    const [supabase, userId] = await Promise.all([
+        getSupabaseForRequest(request),
+        getUserIdFromRequest(request),
+    ]);
+    const requestedOrgId = request.headers.get('X-Organization-Id');
+
+    const { data, error } = await supabase
+        .from('organization_members')
+        .select('organization_id, role, organizations(id, name, slug, created_at)')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: true });
+
+    if (error) {
+        if (isMissingTableError(error)) {
+            return { supabase, userId, requestedOrgId, memberships: [] };
+        }
+        throw new AuthError(`Failed to resolve org memberships: ${error.message}`);
+    }
+
+    const memberships = (data ?? []).map((membership: any) => ({
+        organization_id: membership.organization_id,
+        role: membership.role as OrgRole,
+        organizations: Array.isArray(membership.organizations)
+            ? membership.organizations[0] ?? null
+            : membership.organizations ?? null,
+    }));
+
+    return {
+        supabase,
+        userId,
+        requestedOrgId,
+        memberships,
     };
 }
 

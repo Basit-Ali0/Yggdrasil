@@ -12,7 +12,8 @@ export type AuditStatus = 'draft' | 'ready_to_scan' | 'scan_running' | 'complete
 // ── Screen 2 → 3: POST /api/audits ──────────────────────────
 export interface CreateAuditRequest {
     name: string;
-    policy_type: 'aml' | 'gdpr' | 'soc2' | 'pdf';
+    policy_type?: 'aml' | 'gdpr' | 'soc2' | 'pdf';
+    policy_id?: string;
     selected_categories?: string[];
 }
 
@@ -48,6 +49,7 @@ export interface AuditListResponse {
         status: AuditStatus;
         policy_id: string | null;
         data_source: string;
+        connector_id?: string | null;
         created_at: string;
         updated_at: string;
         latest_scan_id: string | null;
@@ -176,6 +178,8 @@ export interface ScanStatusResponse {
     created_at: string;
     completed_at: string | null;
     audit_name?: string;
+    data_source?: string;
+    file_name?: string | null;
     score_history?: Array<{
         score: number;
         timestamp: string;
@@ -275,6 +279,9 @@ export interface ScanHistoryEntry {
     status: string;
     created_at: string;
     audit_name?: string;
+    data_source?: string;
+    connector_id?: string | null;
+    file_name?: string | null;
 }
 
 export interface ScanHistoryResponse {
@@ -362,6 +369,163 @@ export interface ConnectorImportResponse {
     file_name: string;
     source: string;
     connector_id: string;
+}
+
+export interface CreateConnectorRequest {
+    name: string;
+    type: ConnectorType;
+    config: Record<string, unknown>;
+    credentials?: Record<string, unknown>;
+}
+
+export interface UpdateConnectorRequest {
+    name?: string;
+    config?: Record<string, unknown>;
+    status?: 'active' | 'disabled' | 'error';
+}
+
+export interface ConnectorImportSelection {
+    connector_id: string;
+    table?: string;
+    key?: string;
+    audit_id?: string;
+}
+
+// ── Organization member types ─────────────────────────────────────────
+export type OrganizationRole = 'owner' | 'admin' | 'member';
+
+export interface OrganizationSummary {
+    id: string;
+    name: string;
+    slug: string;
+    created_at: string;
+    role: OrganizationRole;
+    member_count: number;
+}
+
+export interface OrganizationCurrentResponse {
+    organization: OrganizationSummary | null;
+    role: OrganizationRole | null;
+    organizations: OrganizationSummary[];
+    selected_organization_id: string | null;
+    message?: string;
+}
+
+export interface OrganizationListResponse {
+    organizations: OrganizationSummary[];
+}
+
+export interface CreateOrganizationRequest {
+    name: string;
+    slug?: string;
+}
+
+export interface CreateOrganizationResponse {
+    organization: OrganizationSummary;
+    role: OrganizationRole;
+}
+
+export interface OrganizationMember {
+    id: string;
+    organization_id: string;
+    user_id: string;
+    email: string | null;
+    role: OrganizationRole;
+    created_at: string;
+    is_current_user?: boolean;
+    can_remove?: boolean;
+    can_change_role?: boolean;
+    is_last_owner?: boolean;
+}
+
+export interface OrganizationMembersResponse {
+    members: OrganizationMember[];
+}
+
+export interface AddOrganizationMemberRequest {
+    email: string;
+    role: OrganizationRole;
+}
+
+export interface UpdateOrganizationMemberRequest {
+    role: OrganizationRole;
+}
+
+export interface OrganizationInvitation {
+    id: string;
+    email: string;
+    role: OrganizationRole;
+    status: 'pending' | 'accepted' | 'revoked' | 'expired';
+    expires_at: string;
+    created_at: string;
+    invited_by_email: string | null;
+}
+
+export interface OrganizationInvitationsResponse {
+    invitations: OrganizationInvitation[];
+}
+
+export interface CreateInvitationRequest {
+    email: string;
+    role: OrganizationRole;
+}
+
+export interface CreateInvitationResponse {
+    invitation: OrganizationInvitation;
+    invite_url: string;
+}
+
+export interface InvitationPreviewResponse {
+    invitation: {
+        organization_id: string;
+        organization_name: string;
+        email: string;
+        role: OrganizationRole;
+        status: string;
+        expires_at: string;
+        created_at: string;
+    } | null;
+}
+
+export interface AcceptInvitationRequest {
+    token: string;
+}
+
+export interface AcceptInvitationResponse {
+    organization: OrganizationSummary;
+    role: OrganizationRole;
+}
+
+export interface OrganizationEvent {
+    id: string;
+    event_type: string;
+    actor_email: string | null;
+    target_email: string | null;
+    metadata: Record<string, unknown>;
+    created_at: string;
+}
+
+export interface OrganizationEventsResponse {
+    events: OrganizationEvent[];
+}
+
+// ── Policy library types ──────────────────────────────────────────────
+export interface PolicyListItem {
+    id: string;
+    name: string;
+    type: string;
+    prebuilt_type: string | null;
+    rules_count: number;
+    active_rule_count: number;
+    invalid_rule_count: number;
+    validation_status: 'valid' | 'has_invalid_rules';
+    status: string;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface PolicyListResponse {
+    policies: PolicyListItem[];
 }
 
 // ── Case types (P3) ─────────────────────────────────────────
