@@ -8,6 +8,7 @@ import { resolveOrgContext } from '@/lib/org-context';
 import { assertOrgAdmin, assignRoleErrorMessage, canManageMember, recordOrgEvent } from '@/lib/org-management';
 
 type Role = 'owner' | 'admin' | 'member';
+const MAX_USER_LOOKUP_PAGES = 20;
 
 async function emailByUserId(userId: string): Promise<string | null> {
     try {
@@ -24,7 +25,7 @@ async function findUserByEmail(email: string): Promise<{ id: string; email: stri
     const normalized = email.trim().toLowerCase();
     let page = 1;
 
-    while (page < 20) {
+    while (page <= MAX_USER_LOOKUP_PAGES) {
         const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
         if (error) throw error;
         const user = data.users.find((u) => u.email?.toLowerCase() === normalized);

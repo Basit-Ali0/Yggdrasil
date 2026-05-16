@@ -356,8 +356,7 @@ export async function POST(request: NextRequest) {
                 const generatedCases = allGeneratedCases.slice(0, MAX_CASES_PER_SCAN);
                 const persistedSubjects = new Set<string>();
                 const caseRows: Record<string, unknown>[] = [];
-                const eventRows: Record<string, unknown>[] = [];
-                const violationCaseLinks: Array<{ caseId: string; violationIds: string[] }> = [];
+                const generatedCaseById = new Map<string, typeof generatedCases[number]>();
 
                 for (const generatedCase of generatedCases) {
                     const caseRow: Record<string, unknown> = {
@@ -378,28 +377,18 @@ export async function POST(request: NextRequest) {
                     if (audit_id) caseRow.audit_id = audit_id;
 
                     caseRows.push(caseRow);
-                    eventRows.push({
-                        case_id: generatedCase.id,
-                        event_type: 'created',
-                        actor_id: userId,
-                        payload: {
-                            subject_key: generatedCase.subject_key,
-                            violation_count: generatedCase.violation_count,
-                            severity_rollup: generatedCase.severity_rollup,
-                        },
-                    });
-                    violationCaseLinks.push({
-                        caseId: generatedCase.id,
-                        violationIds: generatedCase.violation_ids,
-                    });
-                    persistedSubjects.add(generatedCase.subject_key);
+                    generatedCaseById.set(generatedCase.id, generatedCase);
                 }
 
                 const caseBatchSize = 250;
                 let caseInsertMissingTable = false;
+                const persistedCaseIds = new Set<string>();
                 for (let i = 0; i < caseRows.length; i += caseBatchSize) {
                     const batch = caseRows.slice(i, i + caseBatchSize);
-                    const { error: caseErr } = await supabase.from('cases').insert(batch);
+                    const { data: insertedCases, error: caseErr } = await supabase
+                        .from('cases')
+                        .insert(batch)
+                        .select('id, subject_key');
                     if (caseErr) {
                         if (caseErr.code === '42P01' || caseErr.message?.includes('does not exist')) {
                             caseInsertMissingTable = true;
@@ -407,11 +396,32 @@ export async function POST(request: NextRequest) {
                         }
                         console.error('Case batch insert error:', caseErr);
                     } else {
-                        casesCreated += batch.length;
+                        for (const insertedCase of insertedCases ?? []) {
+                            persistedCaseIds.add(insertedCase.id);
+                            persistedSubjects.add(insertedCase.subject_key);
+                        }
+                        casesCreated += insertedCases?.length ?? 0;
                     }
                 }
 
                 if (!caseInsertMissingTable && casesCreated > 0) {
+                    const eventRows = [...persistedCaseIds]
+                        .map((caseId) => {
+                            const generatedCase = generatedCaseById.get(caseId);
+                            if (!generatedCase) return null;
+                            return {
+                                case_id: caseId,
+                                event_type: 'created',
+                                actor_id: userId,
+                                payload: {
+                                    subject_key: generatedCase.subject_key,
+                                    violation_count: generatedCase.violation_count,
+                                    severity_rollup: generatedCase.severity_rollup,
+                                },
+                            };
+                        })
+                        .filter((row): row is NonNullable<typeof row> => row != null);
+
                     for (let i = 0; i < eventRows.length; i += caseBatchSize) {
                         const { error: eventErr } = await supabase
                             .from('case_events')
@@ -422,6 +432,15 @@ export async function POST(request: NextRequest) {
                     }
 
                     const linkConcurrency = 20;
+                    const violationCaseLinks = [...persistedCaseIds]
+                        .map((caseId) => {
+                            const generatedCase = generatedCaseById.get(caseId);
+                            return generatedCase
+                                ? { caseId, violationIds: generatedCase.violation_ids }
+                                : null;
+                        })
+                        .filter((link): link is NonNullable<typeof link> => link != null);
+
                     for (let i = 0; i < violationCaseLinks.length; i += linkConcurrency) {
                         await Promise.all(
                             violationCaseLinks.slice(i, i + linkConcurrency).map((link) =>

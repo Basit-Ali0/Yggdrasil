@@ -181,6 +181,8 @@ export const useAuditStore = create<AuditState>((set, get) => ({
             set({
                 uploadId: data.upload_id,
                 uploadData: data,
+                mappingId: null,
+                scanId: null,
                 step: 'rules',
                 isUploading: false,
             });
@@ -207,6 +209,8 @@ export const useAuditStore = create<AuditState>((set, get) => ({
         set({
             uploadId: data.upload_id,
             uploadData: data,
+            mappingId: null,
+            scanId: null,
             step: 'rules',
         });
     },

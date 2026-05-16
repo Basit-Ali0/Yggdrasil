@@ -14,6 +14,7 @@ Apply **in filename order** in your Supabase SQL editor (or `psql`).
 | 8 | `2026-04-04-p2-05-connectors.sql` | P2 | `connectors` table (Postgres + S3); credential storage as AES-256-GCM encrypted BYTEA |
 | 9 | `2026-04-04-p3-01-cases.sql` | P3 | `cases`, `case_events` tables; `case_id` on violations; SAR-prep fields; RLS |
 | 10 | `2026-05-15-saas-org-management.sql` | SaaS orgs | Multi-org invitations, org events, ownership helpers; includes the org RLS helper functions needed by later policies |
+| 11 | `2026-05-16-fix-org-events-insert-rls.sql` | SaaS orgs | Follow-up policy correction for databases that already applied the May 15 SaaS org migration |
 
 ## Notes
 

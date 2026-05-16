@@ -117,25 +117,46 @@ export default function OrganizationPage() {
     }
 
     async function revokeInvite(invitationId: string) {
-        await api.delete(`/organizations/invitations/${invitationId}`);
-        toast.success('Invite revoked');
-        await load();
+        setSaving(true);
+        try {
+            await api.delete(`/organizations/invitations/${invitationId}`);
+            toast.success('Invite revoked');
+            await load();
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Revoke failed');
+        } finally {
+            setSaving(false);
+        }
     }
 
     async function updateMember(memberId: string, memberRole: OrganizationRole) {
-        await api.patch(`/organizations/members/${memberId}`, { role: memberRole });
-        toast.success('Role updated');
-        await load();
+        setSaving(true);
+        try {
+            await api.patch(`/organizations/members/${memberId}`, { role: memberRole });
+            toast.success('Role updated');
+            await load();
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Role update failed');
+        } finally {
+            setSaving(false);
+        }
     }
 
     async function removeMember(member: OrganizationMember) {
-        await api.delete(`/organizations/members/${member.id}`);
-        toast.success(member.is_current_user ? 'You left the organization' : 'Member removed');
-        if (member.is_current_user) {
-            await fetchCurrentOrg();
-            router.push('/audit/new');
-        } else {
-            await load();
+        setSaving(true);
+        try {
+            await api.delete(`/organizations/members/${member.id}`);
+            toast.success(member.is_current_user ? 'You left the organization' : 'Member removed');
+            if (member.is_current_user) {
+                await fetchCurrentOrg();
+                router.push('/audit/new');
+            } else {
+                await load();
+            }
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Member removal failed');
+        } finally {
+            setSaving(false);
         }
     }
 
@@ -237,7 +258,13 @@ export default function OrganizationPage() {
                                                 <TableCell>{new Date(member.created_at).toLocaleDateString()}</TableCell>
                                                 <TableCell className="text-right">
                                                     {member.can_remove && (
-                                                        <Button variant="ghost" size="icon" onClick={() => removeMember(member)}>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            onClick={() => removeMember(member)}
+                                                            disabled={saving}
+                                                            aria-label={member.is_current_user ? 'Leave organization' : 'Remove member'}
+                                                        >
                                                             {member.is_current_user ? <LogOut className="h-4 w-4" /> : <Trash2 className="h-4 w-4" />}
                                                         </Button>
                                                     )}
@@ -273,7 +300,7 @@ export default function OrganizationPage() {
                                     {lastInviteUrl && (
                                         <div className="flex items-center gap-2 rounded-md bg-muted p-2 text-xs">
                                             <span className="min-w-0 flex-1 truncate">{lastInviteUrl}</span>
-                                            <Button variant="ghost" size="icon" onClick={() => navigator.clipboard?.writeText(lastInviteUrl)}>
+                                            <Button variant="ghost" size="icon" onClick={() => navigator.clipboard?.writeText(lastInviteUrl)} aria-label="Copy invite link">
                                                 <Clipboard className="h-4 w-4" />
                                             </Button>
                                         </div>
@@ -288,7 +315,7 @@ export default function OrganizationPage() {
                                                     <p className="text-xs text-muted-foreground">{invite.role} · {invite.status} · expires {new Date(invite.expires_at).toLocaleDateString()}</p>
                                                 </div>
                                                 {canEdit && invite.status === 'pending' && (
-                                                    <Button variant="ghost" size="sm" onClick={() => revokeInvite(invite.id)}>Revoke</Button>
+                                                    <Button variant="ghost" size="sm" onClick={() => revokeInvite(invite.id)} disabled={saving}>Revoke</Button>
                                                 )}
                                             </div>
                                         ))}
@@ -326,6 +353,7 @@ export default function OrganizationPage() {
                                             variant="outline"
                                             disabled={!currentMember?.can_remove}
                                             onClick={() => currentMember && removeMember(currentMember)}
+                                            aria-label="Leave organization"
                                         >
                                             Leave workspace
                                         </Button>

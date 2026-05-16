@@ -127,10 +127,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                 session: null,
                 isLoading: false,
             });
-            const { useOrgStore } = await import('@/stores/org-store');
-            useOrgStore.getState().clear();
         } catch {
             set({ isLoading: false });
+        } finally {
+            await Promise.allSettled([
+                import('@/stores/org-store').then(({ useOrgStore }) => useOrgStore.getState().clear()),
+                import('@/stores/audit-store').then(({ useAuditStore }) => useAuditStore.getState().reset()),
+            ]);
+            set({
+                user: null,
+                session: null,
+                isLoading: false,
+            });
         }
     },
 

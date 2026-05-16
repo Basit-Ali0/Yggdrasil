@@ -213,7 +213,9 @@ export default function DashboardPage() {
                             {sourceLabel(currentScan?.data_source)}
                         </Badge>
                         {currentScan?.file_name && (
-                            <Badge variant="secondary">{currentScan.file_name}</Badge>
+                            <Badge variant="secondary" className="max-w-64 truncate" title={currentScan.file_name}>
+                                {currentScan.file_name}
+                            </Badge>
                         )}
                     </div>
                 </div>

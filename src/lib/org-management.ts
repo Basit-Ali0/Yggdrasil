@@ -14,15 +14,22 @@ export type OrganizationEventType =
     | 'member.left'
     | 'ownership.transferred';
 
+export class OrgPermissionError extends AuthError {
+    constructor(message: string) {
+        super(message);
+        this.name = 'OrgPermissionError';
+    }
+}
+
 export function assertOrgAdmin(ctx: OrgContext): void {
     if (ctx.role !== 'owner' && ctx.role !== 'admin') {
-        throw new AuthError('Admin role required');
+        throw new OrgPermissionError('Admin role required');
     }
 }
 
 export function assertOrgOwner(ctx: OrgContext): void {
     if (ctx.role !== 'owner') {
-        throw new AuthError('Owner role required');
+        throw new OrgPermissionError('Owner role required');
     }
 }
 
@@ -125,4 +132,8 @@ export function assignRoleErrorMessage(actorRole: OrgRole, requestedRole: OrgRol
         return 'Admins can only invite or add members';
     }
     return `Cannot assign ${requestedRole} role`;
+}
+
+export function isSelfOwnershipDowngrade(targetUserId: string, currentUserId: string, downgradeRole: string | null): boolean {
+    return targetUserId === currentUserId && downgradeRole != null;
 }

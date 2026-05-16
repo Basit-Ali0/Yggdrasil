@@ -125,7 +125,7 @@ CREATE POLICY "Org members view events"
 DROP POLICY IF EXISTS "Org admins insert events" ON organization_events;
 CREATE POLICY "Org admins insert events"
     ON organization_events FOR INSERT
-    WITH CHECK (organization_id IN (SELECT public.current_user_org_ids()));
+    WITH CHECK (public.current_user_is_org_admin(organization_id));
 
 -- Safe invite preview by token hash. Returns no token hash.
 CREATE OR REPLACE FUNCTION public.resolve_organization_invitation(invite_hash TEXT)

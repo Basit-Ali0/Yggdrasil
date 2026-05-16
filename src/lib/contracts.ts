@@ -369,6 +369,8 @@ export interface ConnectorImportResponse {
     file_name: string;
     source: string;
     connector_id: string;
+    import_limit?: number;
+    truncated?: boolean;
 }
 
 export interface CreateConnectorRequest {

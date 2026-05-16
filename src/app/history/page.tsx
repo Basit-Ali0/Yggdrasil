@@ -145,7 +145,7 @@ export default function HistoryPage() {
                                                         {sourceLabel(scan.data_source)}
                                                     </Badge>
                                                     {scan.file_name && (
-                                                        <span className="max-w-40 truncate text-xs text-muted-foreground">
+                                                        <span className="block max-w-40 truncate text-xs text-muted-foreground" title={scan.file_name}>
                                                             {scan.file_name}
                                                         </span>
                                                     )}

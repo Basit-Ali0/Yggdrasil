@@ -1,6 +1,6 @@
 // ============================================================
 // POST /api/connectors/:id/import — Import data into upload pipeline
-// Body: { table?: string, key?: string, audit_id?: string }
+// Body: { table?: string, key?: string, audit_id?: string, limit?: number }
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -9,6 +9,7 @@ import { resolveOrgContext, orgFilter } from '@/lib/org-context';
 import { decryptCredentials } from '@/lib/connector-crypto';
 import { saveUpload } from '@/lib/upload-store';
 import { detectDataset, getDefaultMapping, getDefaultMappingWithConfidence, getTemporalScale } from '@/lib/engine/schema-adapter';
+import { clampImportLimit } from '@/lib/request-limits';
 import { v4 as uuid } from 'uuid';
 
 export async function POST(
@@ -40,13 +41,17 @@ export async function POST(
         let headers: string[] = [];
         let fileName: string;
         let totalRows: number;
+        let importLimit: number | null = null;
+        let truncated = false;
 
         if (connector.type === 'postgres') {
-            const result = await importFromPostgres(connector.config, credentials, body.table);
+            importLimit = clampImportLimit(body.limit);
+            const result = await importFromPostgres(connector.config, credentials, body.table, importLimit);
             rows = result.rows;
             headers = result.headers;
             fileName = `pg-${body.table ?? 'query'}.csv`;
             totalRows = rows.length;
+            truncated = result.truncated;
         } else if (connector.type === 's3_csv') {
             const key = body.key ?? String(connector.config.key ?? '');
             const result = await importFromS3(connector.config, credentials, key);
@@ -103,6 +108,7 @@ export async function POST(
             file_name: fileName,
             source: connector.type,
             connector_id: id,
+            ...(importLimit ? { import_limit: importLimit, truncated } : {}),
         }, { status: 201 });
     } catch (err) {
         if (err instanceof AuthError) return NextResponse.json({ error: 'UNAUTHORIZED' }, { status: 401 });
@@ -117,8 +123,9 @@ export async function POST(
 async function importFromPostgres(
     config: Record<string, unknown>,
     credentials: Record<string, unknown>,
-    table: string | undefined
-): Promise<{ rows: Record<string, unknown>[]; headers: string[] }> {
+    table: string | undefined,
+    limit: number,
+): Promise<{ rows: Record<string, unknown>[]; headers: string[]; truncated: boolean }> {
     if (!table) throw new Error('table is required for Postgres import');
 
     const { Client } = await import('pg');
@@ -146,12 +153,15 @@ async function importFromPostgres(
 
         const safeTable = `"${escapeIdent(schema)}"."${escapeIdent(tableName)}"`;
 
-        const { rows, fields } = await client.query(`SELECT * FROM ${safeTable}`);
+        const { rows, fields } = await client.query(`SELECT * FROM ${safeTable} LIMIT $1`, [limit + 1]);
         await client.end();
+        const truncated = rows.length > limit;
+        const limitedRows = truncated ? rows.slice(0, limit) : rows;
 
         return {
-            rows,
+            rows: limitedRows,
             headers: fields.map((f) => f.name),
+            truncated,
         };
     } catch (err) {
         await client.end().catch(() => { });

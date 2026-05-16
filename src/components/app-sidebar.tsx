@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 
@@ -33,6 +34,7 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { toast } from 'sonner';
 
 const navItems = [
     { href: '/audit/new', label: 'New Audit', icon: Plus },
@@ -51,6 +53,7 @@ export function AppSidebar() {
     const router = useRouter();
     const { user, signOut } = useAuthStore();
     const { currentOrg, organizations, role, switchOrg } = useOrgStore();
+    const [switchingOrgId, setSwitchingOrgId] = useState<string | null>(null);
 
     const handleSignOut = async () => {
         await signOut();
@@ -58,10 +61,17 @@ export function AppSidebar() {
     };
 
     const handleSwitchOrg = async (organizationId: string) => {
-        if (organizationId === currentOrg?.id) return;
-        await switchOrg(organizationId);
-        router.push('/audit/new');
-        router.refresh();
+        if (organizationId === currentOrg?.id || switchingOrgId) return;
+        setSwitchingOrgId(organizationId);
+        try {
+            await switchOrg(organizationId);
+            router.push('/audit/new');
+            router.refresh();
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Failed to switch workspace');
+        } finally {
+            setSwitchingOrgId(null);
+        }
     };
 
     return (
@@ -101,7 +111,11 @@ export function AppSidebar() {
                                 <Building2 className="h-4 w-4" /> Set up workspace
                             </DropdownMenuItem>
                         ) : organizations.map((org) => (
-                            <DropdownMenuItem key={org.id} onClick={() => handleSwitchOrg(org.id)}>
+                            <DropdownMenuItem
+                                key={org.id}
+                                onClick={() => handleSwitchOrg(org.id)}
+                                disabled={switchingOrgId != null}
+                            >
                                 <Building2 className="h-4 w-4" />
                                 <span className="min-w-0 flex-1 truncate">{org.name}</span>
                                 <span className="text-xs text-muted-foreground">{org.role}</span>

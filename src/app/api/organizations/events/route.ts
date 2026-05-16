@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AuthError, getSupabaseAdmin } from '@/lib/supabase';
 import { resolveOrgContext } from '@/lib/org-context';
+import { parseOrganizationEventsLimit } from '@/lib/request-limits';
 
 async function emailMapFor(userIds: string[]) {
     const entries = new Map<string, string | null>();
@@ -19,7 +20,7 @@ async function emailMapFor(userIds: string[]) {
 export async function GET(request: NextRequest) {
     try {
         const ctx = await resolveOrgContext(request);
-        const limit = Math.min(Number(request.nextUrl.searchParams.get('limit') ?? 50), 100);
+        const limit = parseOrganizationEventsLimit(request.nextUrl.searchParams.get('limit'));
         const { data, error } = await ctx.supabase
             .from('organization_events')
             .select('id, event_type, actor_user_id, target_user_id, metadata, created_at')

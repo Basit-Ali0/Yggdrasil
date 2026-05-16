@@ -10,6 +10,8 @@ import {
 } from '@/lib/org-management';
 import type { OrganizationInvitation, OrganizationRole } from '@/lib/contracts';
 
+const MAX_USER_LOOKUP_PAGES = 20;
+
 async function emailByUserId(userId: string): Promise<string | null> {
     try {
         const admin = getSupabaseAdmin();
@@ -38,7 +40,7 @@ async function findUserByEmailIfServiceRoleAvailable(email: string): Promise<{ i
         const normalized = email.trim().toLowerCase();
         let page = 1;
 
-        while (page < 20) {
+        while (page <= MAX_USER_LOOKUP_PAGES) {
             const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
             if (error) return null;
             const user = data.users.find((u) => u.email?.toLowerCase() === normalized);

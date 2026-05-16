@@ -13,11 +13,11 @@ async function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function redactSecrets(value: unknown): string {
+export function redactSecrets(value: unknown): string {
     const text = value instanceof Error ? value.message : String(value);
     return text
         .replace(/AIza[0-9A-Za-z_-]{20,}/g, '[REDACTED_GEMINI_API_KEY]')
-        .replace(/api_key:[^'"\s,)]+/g, 'api_key:[REDACTED]');
+        .replace(/(["']?api_key["']?\s*[:=]\s*)["']?[^'"\s,)]+["']?/gi, '$1[REDACTED]');
 }
 
 export async function withRetry<T>(

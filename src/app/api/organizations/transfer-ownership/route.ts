@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { AuthError } from '@/lib/supabase';
 import { resolveOrgContext } from '@/lib/org-context';
-import { assertOrgOwner, recordOrgEvent } from '@/lib/org-management';
+import { assertOrgOwner, isSelfOwnershipDowngrade, OrgPermissionError, recordOrgEvent } from '@/lib/org-management';
 
 export async function POST(request: NextRequest) {
     try {
@@ -26,6 +26,12 @@ export async function POST(request: NextRequest) {
 
         if (targetError || !target) {
             return NextResponse.json({ error: 'NOT_FOUND', message: 'Target member not found' }, { status: 404 });
+        }
+        if (isSelfOwnershipDowngrade(target.user_id, ctx.userId, downgradeCurrentTo)) {
+            return NextResponse.json(
+                { error: 'VALIDATION_ERROR', message: 'Cannot transfer ownership to yourself while downgrading your own role' },
+                { status: 400 },
+            );
         }
 
         const { error: promoteError } = await ctx.supabase
@@ -60,9 +66,11 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json({ success: true });
     } catch (err) {
+        if (err instanceof OrgPermissionError) {
+            return NextResponse.json({ error: 'FORBIDDEN', message: err.message }, { status: 403 });
+        }
         if (err instanceof AuthError) {
-            const status = err.message.includes('Owner') ? 403 : 401;
-            return NextResponse.json({ error: status === 403 ? 'FORBIDDEN' : 'UNAUTHORIZED', message: err.message }, { status });
+            return NextResponse.json({ error: 'UNAUTHORIZED', message: err.message }, { status: 401 });
         }
         console.error('POST /api/organizations/transfer-ownership error:', err);
         return NextResponse.json({ error: 'INTERNAL_ERROR', message: 'Failed to transfer ownership' }, { status: 500 });

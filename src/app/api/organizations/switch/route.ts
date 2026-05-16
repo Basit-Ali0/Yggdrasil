@@ -4,7 +4,7 @@ import { getOrgMembershipsForRequest } from '@/lib/org-context';
 
 export async function POST(request: NextRequest) {
     try {
-        const { memberships } = await getOrgMembershipsForRequest(request);
+        const { memberships, supabase } = await getOrgMembershipsForRequest(request);
         const body = await request.json();
         const organizationId = typeof body.organization_id === 'string' ? body.organization_id : '';
         const membership = memberships.find((item) => item.organization_id === organizationId);
@@ -16,6 +16,11 @@ export async function POST(request: NextRequest) {
             );
         }
 
+        const { count } = await supabase
+            .from('organization_members')
+            .select('id', { count: 'exact', head: true })
+            .eq('organization_id', organizationId);
+
         return NextResponse.json({
             organization: {
                 id: membership.organizations.id,
@@ -23,7 +28,7 @@ export async function POST(request: NextRequest) {
                 slug: membership.organizations.slug,
                 created_at: membership.organizations.created_at,
                 role: membership.role,
-                member_count: 1,
+                member_count: count ?? null,
             },
             role: membership.role,
         });

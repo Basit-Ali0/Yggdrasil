@@ -166,8 +166,16 @@ export default function ConnectorsPage() {
 
     async function setStatus(status: Connector['status']) {
         if (!selected) return;
-        await api.patch(`/connectors/${selected.id}`, { status });
-        await load();
+        setBusy(true);
+        try {
+            await api.patch(`/connectors/${selected.id}`, { status });
+            toast.success(`Connector ${status === 'active' ? 'enabled' : 'disabled'}`);
+            await load();
+        } catch (err) {
+            toast.error(err instanceof Error ? err.message : 'Status update failed');
+        } finally {
+            setBusy(false);
+        }
     }
 
     async function deleteConnector() {
@@ -278,10 +286,16 @@ export default function ConnectorsPage() {
                                     <CardTitle className="text-base">{selected.name}</CardTitle>
                                     <div className="flex gap-2">
                                         <Button variant="outline" size="sm" onClick={testConnector} disabled={busy}><PlugZap className="mr-2 h-4 w-4" /> Test</Button>
-                                        <Button variant="outline" size="sm" onClick={() => setStatus(selected.status === 'active' ? 'disabled' : 'active')}>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setStatus(selected.status === 'active' ? 'disabled' : 'active')}
+                                            disabled={busy}
+                                            aria-label={selected.status === 'active' ? 'Disable connector' : 'Enable connector'}
+                                        >
                                             {selected.status === 'active' ? 'Disable' : 'Enable'}
                                         </Button>
-                                        <Button variant="ghost" size="icon" onClick={deleteConnector} disabled={busy}><Trash2 className="h-4 w-4" /></Button>
+                                        <Button variant="ghost" size="icon" onClick={deleteConnector} disabled={busy} aria-label="Delete connector"><Trash2 className="h-4 w-4" /></Button>
                                     </div>
                                 </div>
                             </CardHeader>
@@ -303,11 +317,11 @@ export default function ConnectorsPage() {
                                         <div className="overflow-x-auto rounded-md border">
                                             <Table>
                                                 <TableHeader>
-                                                    <TableRow>{preview.headers.map((header) => <TableHead key={header}>{header}</TableHead>)}</TableRow>
+                                                    <TableRow>{preview.headers.map((header, headerIndex) => <TableHead key={`${header}-${headerIndex}`}>{header}</TableHead>)}</TableRow>
                                                 </TableHeader>
                                                 <TableBody>
-                                                    {preview.rows.slice(0, 10).map((row, index) => (
-                                                        <TableRow key={index}>{preview.headers.map((header) => <TableCell key={header}>{String(row[header] ?? '')}</TableCell>)}</TableRow>
+                                                    {preview.rows.slice(0, 10).map((row, rowIndex) => (
+                                                        <TableRow key={rowIndex}>{preview.headers.map((header, columnIndex) => <TableCell key={`${rowIndex}-${columnIndex}-${header}`}>{String(row[header] ?? '')}</TableCell>)}</TableRow>
                                                     ))}
                                                 </TableBody>
                                             </Table>

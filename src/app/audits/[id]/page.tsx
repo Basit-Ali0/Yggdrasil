@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ErrorState } from '@/components/ui-custom/error-state';
 import { Loader2, ArrowRight, RotateCcw } from 'lucide-react';
+import { toast } from 'sonner';
 
 function sourceLabel(source?: string) {
     if (source === 'postgres') return 'Postgres';
@@ -48,6 +49,10 @@ export default function AuditDetailPage({ params }: { params: Promise<{ id: stri
         if (!audit) return;
         if (audit.status === 'completed' && audit.latest_scan?.id) {
             router.push(`/dashboard/${audit.latest_scan.id}`);
+            return;
+        }
+        if (audit.status === 'completed') {
+            toast.error('This audit is marked completed but has no linked scan to open.');
             return;
         }
         if (!audit.upload) {

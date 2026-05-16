@@ -28,15 +28,22 @@ export async function GET(request: NextRequest) {
         }
 
         const policyIds = (policies ?? []).map((policy: any) => policy.id);
-        const { data: rules } = policyIds.length
+        const rulesResult = policyIds.length
             ? await ctx.supabase
                 .from('rules')
                 .select('policy_id, is_active, validation_status')
                 .in('policy_id', policyIds)
-            : { data: [] as any[] };
+            : { data: [] as any[], error: null };
+
+        if (rulesResult.error) {
+            return NextResponse.json(
+                { error: 'INTERNAL_ERROR', message: rulesResult.error.message },
+                { status: 500 },
+            );
+        }
 
         const stats = new Map<string, { active: number; invalid: number }>();
-        for (const rule of rules ?? []) {
+        for (const rule of rulesResult.data ?? []) {
             const current = stats.get(rule.policy_id) ?? { active: 0, invalid: 0 };
             if (rule.is_active) current.active++;
             if (rule.validation_status === 'invalid') current.invalid++;

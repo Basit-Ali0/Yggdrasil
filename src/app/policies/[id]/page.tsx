@@ -106,7 +106,13 @@ export default function PolicyDetailPage({ params }: { params: Promise<{ id: str
                                         <p className="mt-1 text-xs text-amber-600">{rule.validation_issues[0].message}</p>
                                     )}
                                 </div>
-                                <Button variant="ghost" size="icon" onClick={() => deleteRule(id, rule.rule_id)} disabled={isUpdating}>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => deleteRule(id, rule.rule_id)}
+                                    disabled={isUpdating}
+                                    aria-label={`Delete rule ${rule.rule_id}`}
+                                >
                                     <Trash2 className="h-4 w-4" />
                                 </Button>
                             </CardContent>

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { api } from '@/lib/api';
 import type { PolicyExtractResponse, PolicyListItem, PolicyListResponse } from '@/lib/contracts';
 import { Button } from '@/components/ui/button';
@@ -85,21 +86,23 @@ export default function PoliciesPage() {
             ) : (
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                     {filtered.map((policy) => (
-                        <Card key={policy.id} className="cursor-pointer transition-colors hover:bg-muted/40" onClick={() => router.push(`/policies/${policy.id}`)}>
-                            <CardHeader className="pb-2">
-                                <div className="flex items-start justify-between gap-3">
-                                    <CardTitle className="text-base">{policy.name}</CardTitle>
-                                    <Badge variant={policy.invalid_rule_count > 0 ? 'secondary' : 'outline'}>
-                                        {policy.validation_status === 'valid' ? 'Valid' : `${policy.invalid_rule_count} invalid`}
-                                    </Badge>
-                                </div>
-                            </CardHeader>
-                            <CardContent className="space-y-2 text-sm text-muted-foreground">
-                                <p>{policy.active_rule_count} active of {policy.rules_count} rules</p>
-                                <p>{policy.prebuilt_type?.toUpperCase() ?? policy.type}</p>
-                                <p>Updated {new Date(policy.updated_at).toLocaleDateString()}</p>
-                            </CardContent>
-                        </Card>
+                        <Link key={policy.id} href={`/policies/${policy.id}`} className="block rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                            <Card className="h-full transition-colors hover:bg-muted/40">
+                                <CardHeader className="pb-2">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <CardTitle className="text-base">{policy.name}</CardTitle>
+                                        <Badge variant={policy.invalid_rule_count > 0 ? 'secondary' : 'outline'}>
+                                            {policy.validation_status === 'valid' ? 'Valid' : `${policy.invalid_rule_count} invalid`}
+                                        </Badge>
+                                    </div>
+                                </CardHeader>
+                                <CardContent className="space-y-2 text-sm text-muted-foreground">
+                                    <p>{policy.active_rule_count} active of {policy.rules_count} rules</p>
+                                    <p>{policy.prebuilt_type?.toUpperCase() ?? policy.type}</p>
+                                    <p>Updated {new Date(policy.updated_at).toLocaleDateString()}</p>
+                                </CardContent>
+                            </Card>
+                        </Link>
                     ))}
                 </div>
             )}

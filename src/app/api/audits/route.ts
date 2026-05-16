@@ -145,7 +145,7 @@ export async function POST(request: NextRequest) {
                     name: rule.name,
                     type: rule.type,
                     severity: rule.severity,
-                    threshold: rule.threshold ? parseFloat(rule.threshold) : null,
+                    threshold: rule.threshold != null && rule.threshold !== '' ? parseFloat(String(rule.threshold)) : null,
                     time_window: rule.time_window,
                     conditions: rule.conditions,
                     policy_excerpt: rule.policy_excerpt,

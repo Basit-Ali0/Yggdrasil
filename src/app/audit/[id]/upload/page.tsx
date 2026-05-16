@@ -193,11 +193,11 @@ export default function DataUploadPage() {
                                 <div className="overflow-x-auto rounded-md border">
                                     <Table>
                                         <TableHeader>
-                                            <TableRow>{preview.headers.map((header) => <TableHead key={header}>{header}</TableHead>)}</TableRow>
+                                            <TableRow>{preview.headers.map((header, headerIndex) => <TableHead key={`${header}-${headerIndex}`}>{header}</TableHead>)}</TableRow>
                                         </TableHeader>
                                         <TableBody>
-                                            {preview.rows.slice(0, 5).map((row, index) => (
-                                                <TableRow key={index}>{preview.headers.map((header) => <TableCell key={header}>{String(row[header] ?? '')}</TableCell>)}</TableRow>
+                                            {preview.rows.slice(0, 5).map((row, rowIndex) => (
+                                                <TableRow key={rowIndex}>{preview.headers.map((header, columnIndex) => <TableCell key={`${rowIndex}-${columnIndex}-${header}`}>{String(row[header] ?? '')}</TableCell>)}</TableRow>
                                             ))}
                                         </TableBody>
                                     </Table>
@@ -256,8 +256,8 @@ export default function DataUploadPage() {
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {uploadData.headers.map((header) => (
-                                            <TableRow key={header}>
+                                        {uploadData.headers.map((header, headerIndex) => (
+                                            <TableRow key={`${header}-${headerIndex}`}>
                                                 <TableCell className="font-mono-code text-sm">
                                                     {header}
                                                 </TableCell>

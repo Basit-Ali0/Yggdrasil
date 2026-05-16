@@ -12,6 +12,26 @@ export async function DELETE(
         const ctx = await resolveOrgContext(request);
         assertOrgAdmin(ctx);
 
+        const { data: existingInvite, error: fetchError } = await ctx.supabase
+            .from('organization_invitations')
+            .select('id, status')
+            .eq('id', id)
+            .eq('organization_id', ctx.organizationId)
+            .maybeSingle();
+
+        if (fetchError) {
+            return NextResponse.json({ error: 'INTERNAL_ERROR', message: fetchError.message }, { status: 500 });
+        }
+        if (!existingInvite) {
+            return NextResponse.json({ error: 'NOT_FOUND', message: 'Invitation not found' }, { status: 404 });
+        }
+        if (existingInvite.status !== 'pending') {
+            return NextResponse.json(
+                { error: 'CONFLICT', message: 'Invitation is no longer pending' },
+                { status: 409 },
+            );
+        }
+
         const { data, error } = await ctx.supabase
             .from('organization_invitations')
             .update({ status: 'revoked' })
@@ -19,10 +39,13 @@ export async function DELETE(
             .eq('organization_id', ctx.organizationId)
             .eq('status', 'pending')
             .select('email, role')
-            .single();
+            .maybeSingle();
 
         if (error) {
             return NextResponse.json({ error: 'INTERNAL_ERROR', message: error.message }, { status: 500 });
+        }
+        if (!data) {
+            return NextResponse.json({ error: 'CONFLICT', message: 'Invitation is no longer pending' }, { status: 409 });
         }
 
         await recordOrgEvent(ctx.supabase, ctx.organizationId, ctx.userId, 'invitation.revoked', {
